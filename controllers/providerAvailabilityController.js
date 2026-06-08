@@ -1,37 +1,42 @@
-import User from "../models/User.js";
+import ProviderAvailability from "../models/ProviderAvailability.js";
 
-export const updateAvailability = async (req, res) => {
+// Add/Update Availability
+export const setAvailability = async (req, res) => {
     try {
-
         const providerId = req.user.id;
-        const { availability_status } = req.body;
+        const { day_of_week, start_time, end_time } = req.body;
 
-        if (!["available", "unavailable"].includes(availability_status)) {
-            return res.status(400).json({
-                message: "Invalid availability status"
-            });
+        if(!day_of_week || !start_time || !end_time){
+            return res.status(400).json({ message: "All fields are required" });
         }
 
-        const provider = await User.findByPk(providerId);
+        // Optional: delete existing slot for same day
+        await ProviderAvailability.destroy({ where: { provider_id: providerId, day_of_week } });
 
-        if (!provider || provider.role !== "provider") {
-            return res.status(404).json({
-                message: "Provider not found"
-            });
-        }
-
-        provider.availability_status = availability_status;
-
-        await provider.save();
-
-        res.status(200).json({
-            message: "Availability updated successfully",
-            availability_status: provider.availability_status
+        const newSlot = await ProviderAvailability.create({
+            provider_id: providerId,
+            day_of_week,
+            start_time,
+            end_time
         });
 
-    } catch (error) {
-        res.status(500).json({
-            error: error.message
+        res.status(201).json({ message: "Availability updated", slot: newSlot });
+    } catch(err){
+        res.status(500).json({ error: err.message });
+    }
+};
+
+// Get provider availability
+export const getProviderAvailability = async (req, res) => {
+    try{
+        const providerId = req.params.providerId;
+
+        const slots = await ProviderAvailability.findAll({
+            where: { provider_id: providerId }
         });
+
+        res.status(200).json(slots);
+    } catch(err){
+        res.status(500).json({ error: err.message });
     }
 };

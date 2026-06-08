@@ -1,122 +1,134 @@
-import db from "../config/db.js";
+import Booking from "../models/Booking.js";
+import ProviderAvailability from "../models/ProviderAvailability.js";
+import Service from "../models/Service.js";
+import User from "../models/User.js";
+import { Op } from "sequelize";
+import { createNotification } from "./notificationController.js";
 
-// Create Booking
-export const createBooking = (req, res) => {
-    const residentId = req.user.id;
-    const { service_id, booking_date, booking_time } = req.body;
+// Create Booking with availability check
+export const createBooking = async (req, res) => {
+    try {
+        const residentId = req.user.id;
+        const { service_id, booking_date, booking_time } = req.body;
 
-    const findServiceSql = `
-        SELECT provider_id 
-        FROM services 
-        WHERE service_id = ?
-    `;
-
-    db.query(findServiceSql, [service_id], (err, serviceResult) => {
-        if (err) {
-            return res.status(500).json({ error: err.message });
-        }
-
-        if (serviceResult.length === 0) {
+        // 1️⃣ Get the service
+        const service = await Service.findByPk(service_id);
+        if (!service) {
             return res.status(404).json({ message: "Service not found" });
         }
+        const providerId = service.provider_id;
 
-        const providerId = serviceResult[0].provider_id;
+        // 2️⃣ Check provider availability
+        const dayOfWeek = new Date(booking_date)
+            .toLocaleString('en-US', { weekday: 'short' }); // Mon, Tue, etc.
 
-        const bookingSql = `
-            INSERT INTO bookings (resident_id, service_id, provider_id, booking_date, booking_time)
-            VALUES (?, ?, ?, ?, ?)
-        `;
-
-        db.query(
-            bookingSql,
-            [residentId, service_id, providerId, booking_date, booking_time],
-            (err, result) => {
-                if (err) {
-                    return res.status(500).json({ error: err.message });
-                }
-
-                res.status(201).json({
-                    message: "Booking created successfully",
-                    bookingId: result.insertId
-                });
+        const availableSlot = await ProviderAvailability.findOne({
+            where: {
+                provider_id: providerId,
+                day_of_week: dayOfWeek,
+                start_time: { [Op.lte]: booking_time },
+                end_time: { [Op.gte]: booking_time }
             }
-        );
-    });
-};
+        });
 
-// View My Bookings
-export const getMyBookings = (req, res) => {
-    const userId = req.user.id;
-    const role = req.user.role;
+        if (!availableSlot) {
+            return res.status(400).json({ message: "Provider is not available at this time" });
+        }
 
-    let sql = "";
+        // 3️⃣ Optional: check for overlapping bookings
+        const existingBooking = await Booking.findOne({
+            where: {
+                provider_id: providerId,
+                booking_date,
+                booking_time
+            }
+        });
 
-    if (role === "resident") {
-        sql = `
-            SELECT 
-                b.booking_id,
-                b.booking_date,
-                b.booking_time,
-                b.status,
-                s.title AS service_title,
-                u.name AS provider_name
-            FROM bookings b
-            JOIN services s ON b.service_id = s.service_id
-            JOIN users u ON b.provider_id = u.user_id
-            WHERE b.resident_id = ?
-            ORDER BY b.created_at DESC
-        `;
-    } else if (role === "provider") {
-        sql = `
-            SELECT 
-                b.booking_id,
-                b.booking_date,
-                b.booking_time,
-                b.status,
-                s.title AS service_title,
-                u.name AS resident_name
-            FROM bookings b
-            JOIN services s ON b.service_id = s.service_id
-            JOIN users u ON b.resident_id = u.user_id
-            WHERE b.provider_id = ?
-            ORDER BY b.created_at DESC
-        `;
-    } else {
-        return res.status(403).json({ message: "Invalid role" });
+        if (existingBooking) {
+            return res.status(400).json({ message: "This time slot is already booked" });
+        }
+
+        // 4️⃣ Create booking
+        const newBooking = await Booking.create({
+            resident_id: residentId,
+            service_id,
+            provider_id: providerId,
+            booking_date,
+            booking_time,
+            status: "pending"
+        });
+
+        // 5️⃣ Create notifications
+        await createNotification(providerId, "booking", `New booking request for ${booking_date} at ${booking_time}`);
+        await createNotification(residentId, "booking", `Your booking request for ${booking_date} at ${booking_time} has been sent to the provider.`);
+
+        res.status(201).json({
+            message: "Booking created successfully",
+            bookingId: newBooking.booking_id
+        });
+
+    } catch (error) {
+        res.status(500).json({ error: error.message });
     }
-
-    db.query(sql, [userId], (err, results) => {
-        if (err) {
-            return res.status(500).json({ error: err.message });
-        }
-
-        res.status(200).json(results);
-    });
 };
 
-// Update Booking Status
-export const updateBookingStatus = (req, res) => {
-    const providerId = req.user.id;
-    const { bookingId } = req.params;
-    const { status } = req.body;
+// View my bookings (resident/provider)
+export const getMyBookings = async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const role = req.user.role;
 
-    const sql = `
-        UPDATE bookings
-        SET status = ?
-        WHERE booking_id = ? AND provider_id = ?
-    `;
+        let bookings;
 
-    db.query(sql, [status, bookingId, providerId], (err, result) => {
-        if (err) {
-            return res.status(500).json({ error: err.message });
+        if (role === "resident") {
+            bookings = await Booking.findAll({
+                where: { resident_id: userId },
+                include: [
+                    { model: Service, attributes: ["title", "description", "price"] },
+                    { model: User, as: "provider", attributes: ["name", "email", "phone"] }
+                ]
+            });
+        } else if (role === "provider") {
+            bookings = await Booking.findAll({
+                where: { provider_id: userId },
+                include: [
+                    { model: Service, attributes: ["title", "description", "price"] },
+                    { model: User, as: "resident", attributes: ["name", "email", "phone"] }
+                ]
+            });
+        } else {
+            return res.status(403).json({ message: "Invalid role" });
         }
 
-        if (result.affectedRows === 0) {
+        res.status(200).json(bookings);
+
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+};
+
+// Update booking status (provider)
+export const updateBookingStatus = async (req, res) => {
+    try {
+        const providerId = req.user.id;
+        const { bookingId } = req.params;
+        const { status } = req.body;
+
+        const booking = await Booking.findByPk(bookingId);
+
+        if (!booking || booking.provider_id !== providerId) {
             return res.status(404).json({ message: "Booking not found or not authorized" });
         }
 
-        res.status(200).json({
-            message: "Booking status updated successfully"
-        });
-    });
+        booking.status = status;
+        await booking.save();
+
+        // Notification on status update
+        await createNotification(booking.resident_id, "booking", `Your booking status has been updated to "${status}" by the provider.`);
+
+        res.status(200).json({ message: "Booking status updated successfully" });
+
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
 };

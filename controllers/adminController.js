@@ -1,4 +1,5 @@
 import User from "../models/User.js";
+import { createNotification } from "./notificationController.js";
 
 // Get all pending providers
 export const getPendingProviders = async (req, res) => {
@@ -34,6 +35,9 @@ export const approveProvider = async (req, res) => {
         provider.approval_status = "approved";
         await provider.save();
 
+        // Send notification to provider
+        await createNotification(provider.user_id, "approval", "Your account has been approved by admin.");
+
         res.status(200).json({
             message: "Provider approved"
         });
@@ -59,6 +63,9 @@ export const rejectProvider = async (req, res) => {
 
         provider.approval_status = "rejected";
         await provider.save();
+
+        // Send notification to provider
+        await createNotification(provider.user_id, "approval", "Your account has been rejected by admin.");
 
         res.status(200).json({
             message: "Provider rejected"

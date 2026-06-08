@@ -1,9 +1,12 @@
 import express from "express";
-import { register, login } from "../controllers/authController.js";
+import { register, login, forgotPassword, resetPassword } from "../controllers/authController.js";
 import upload from "../middleware/uploadMiddleware.js";
 
 const router = express.Router();
 
+// =========================
+// Registration
+// =========================
 router.post(
     "/register",
     upload.fields([
@@ -13,6 +16,19 @@ router.post(
     register
 );
 
+// =========================
+// Login
+// =========================
 router.post("/login", login);
+
+// =========================
+// Forgot Password
+// =========================
+router.post("/forgot-password", forgotPassword);
+
+// =========================
+// Reset Password
+// =========================
+router.post("/reset-password/:token", resetPassword);
 
 export default router;
