@@ -1,4 +1,5 @@
 import Notification from "../models/Notification.js";
+import { io } from "../app.js"; // Import the Socket.IO instance from app.js
 
 // Create notification
 export const createNotification = async (user_id, type, message) => {
@@ -8,6 +9,10 @@ export const createNotification = async (user_id, type, message) => {
             type,
             message
         });
+
+        // Emit real-time notification to the specific user
+        io.emit(`notification-${user_id}`, notification);
+
         return notification;
     } catch (error) {
         console.error("Notification creation failed:", error.message);

@@ -27,7 +27,7 @@ const ProviderAvailability = sequelize.define("ProviderAvailability", {
     }
 }, {
     tableName: "provider_availability",
-    timestamps: false
+    timestamps: true
 });
 
 // Association

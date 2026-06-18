@@ -35,7 +35,9 @@ const Booking = sequelize.define("Booking", {
     }
 }, {
     tableName: "bookings",
-    timestamps: false
+    createdAt: "created_at",   // map Sequelize createdAt to your column
+    updatedAt: "updated_at",   // map Sequelize updatedAt to your column
+    timestamps: true
 });
 
 // Associations

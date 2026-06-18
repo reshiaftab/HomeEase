@@ -77,7 +77,7 @@ reset_password_expires: {
 }
 }, {
     tableName: "users",
-    timestamps: false
+    timestamps: true
 });
 
 export default User;

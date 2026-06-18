@@ -30,7 +30,7 @@ const Service = sequelize.define("Service", {
     }
 }, {
     tableName: "services",
-    timestamps: false
+    timestamps: true
 });
 
 // Associate service with provider (User)
