@@ -20,7 +20,7 @@ const server = http.createServer(app); // Create HTTP server
 import { Server } from "socket.io";
 export const io = new Server(server, {
     cors: {
-        origin: "*", 
+        origin: "*", // Or restrict to your frontend URL
         methods: ["GET", "POST"]
     }
 });
