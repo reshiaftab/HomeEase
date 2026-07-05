@@ -1,1 +1,1 @@
-# HomeEase
+# HomeEases
