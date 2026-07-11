@@ -2,42 +2,42 @@ import User from "../models/User.js";
 import Booking from "../models/Booking.js";
 import Review from "../models/Review.js";
 import Service from "../models/Service.js";
+import sequelize from "../config/sequelize.js";
 
 // Get Admin Dashboard Stats
 export const getAdminDashboard = async (req, res) => {
     try {
-        // Get total number of approved providers, pending providers, and rejected providers
-        const totalProviders = await User.count({ where: { role: "provider" } });
-        const pendingProviders = await User.count({
-            where: { role: "provider", approval_status: "pending" }
-        });
-        const approvedProviders = await User.count({
-            where: { role: "provider", approval_status: "approved" }
-        });
-        const rejectedProviders = await User.count({
-            where: { role: "provider", approval_status: "rejected" }
+        // Provider counts in a single query
+        const providerStats = await User.findAll({
+            where: { role: "provider" },
+            attributes: ["approval_status", [sequelize.fn("COUNT", sequelize.col("user_id")), "count"]],
+            group: ["approval_status"]
         });
 
-        // Get total number of residents
+        const statsMap = { pending: 0, approved: 0, rejected: 0 };
+        providerStats.forEach(stat => {
+            statsMap[stat.approval_status] = parseInt(stat.get("count"));
+        });
+
+        const totalProviders = Object.values(statsMap).reduce((a,b) => a+b, 0);
+
+        // Other counts
         const totalResidents = await User.count({ where: { role: "resident" } });
-
-        // Get total bookings and reviews
         const totalBookings = await Booking.count();
         const totalReviews = await Review.count();
-
-        // Get total services
         const totalServices = await Service.count();
 
         res.status(200).json({
             totalProviders,
-            pendingProviders,
-            approvedProviders,
-            rejectedProviders,
+            pendingProviders: statsMap.pending,
+            approvedProviders: statsMap.approved,
+            rejectedProviders: statsMap.rejected,
             totalResidents,
             totalBookings,
             totalReviews,
-            totalServices,
+            totalServices
         });
+
     } catch (error) {
         res.status(500).json({ error: error.message });
     }

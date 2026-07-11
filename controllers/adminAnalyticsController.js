@@ -8,20 +8,18 @@ import { Op, fn, col } from "sequelize";
 export const getAdminAnalytics = async (req, res) => {
     try {
         const period = req.query.period || "monthly"; // daily, weekly, monthly
-
-        // Determine start date based on period
+        const now = new Date();
         let startDate;
-        const today = new Date();
+
+        // Calculate start date based on period
         if (period === "daily") {
-            startDate = new Date(today.setHours(0,0,0,0));
+            startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
         } else if (period === "weekly") {
-            const day = today.getDay();
-            startDate = new Date(today);
-            startDate.setDate(today.getDate() - day);
-            startDate.setHours(0,0,0,0);
+            const day = now.getDay();
+            startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - day);
         } else {
             // monthly
-            startDate = new Date(today.getFullYear(), today.getMonth(), 1);
+            startDate = new Date(now.getFullYear(), now.getMonth(), 1);
         }
 
         // 1️⃣ Total bookings in period
@@ -34,11 +32,12 @@ export const getAdminAnalytics = async (req, res) => {
             where: { role: "provider", approval_status: "pending" }
         });
 
-        // 3️⃣ Top-rated providers
+        // 3️⃣ Top-rated providers (avg rating + total reviews)
         const topProviders = await Review.findAll({
             attributes: [
                 "provider_id",
-                [fn("AVG", col("rating")), "avg_rating"]
+                [fn("AVG", col("rating")), "avg_rating"],
+                [fn("COUNT", col("review_id")), "total_reviews"]
             ],
             group: ["provider_id"],
             order: [[fn("AVG", col("rating")), "DESC"]],
@@ -52,7 +51,7 @@ export const getAdminAnalytics = async (req, res) => {
         // 5️⃣ Service summaries
         const totalServices = await Service.count();
 
-        // 6️⃣ Optional: bookings by status
+        // 6️⃣ Bookings by status
         const bookingsByStatus = await Booking.findAll({
             attributes: ["status", [fn("COUNT", col("booking_id")), "count"]],
             group: ["status"]
@@ -70,6 +69,8 @@ export const getAdminAnalytics = async (req, res) => {
         });
 
     } catch (error) {
-        res.status(500).json({ error: error.message });
+        res.status(500).json({
+            error: "Failed to fetch admin analytics: " + error.message
+        });
     }
 };

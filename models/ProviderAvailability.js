@@ -23,15 +23,28 @@ const ProviderAvailability = sequelize.define("ProviderAvailability", {
     },
     end_time: {
         type: DataTypes.TIME,
-        allowNull: false
+        allowNull: false,
+        validate: {
+            isAfterStart(value) {
+                if (value <= this.start_time) {
+                    throw new Error("End time must be after start time");
+                }
+            }
+        }
     }
 }, {
     tableName: "provider_availability",
-    timestamps: true
+    timestamps: true,
+    createdAt: "created_at",
+    updatedAt: "updated_at",
+    indexes: [
+        { fields: ['provider_id'] },
+        { fields: ['day_of_week'] }
+    ]
 });
 
-// Association
-ProviderAvailability.belongsTo(User, { foreignKey: 'provider_id' });
-ProviderAvailability.hasMany(Booking, { foreignKey: 'provider_id' });
+// Associations
+ProviderAvailability.belongsTo(User, { foreignKey: "provider_id" });
+ProviderAvailability.hasMany(Booking, { foreignKey: "provider_id" });
 
 export default ProviderAvailability;

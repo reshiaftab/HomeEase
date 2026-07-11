@@ -2,9 +2,9 @@ import User from "../models/User.js";
 import Service from "../models/Service.js";
 import ProviderAvailability from "../models/ProviderAvailability.js";
 import Review from "../models/Review.js";
-import { Op } from "sequelize";
+import { Op, fn, col } from "sequelize";
 
-// GET /api/providers/recommendations?category=Electrician&location=Lahore&date=2026-06-06&time=14:00:00
+// GET /api/providers/recommendations
 export const getRecommendedProviders = async (req, res) => {
     try {
         const { category, location, date, time } = req.query;
@@ -15,10 +15,8 @@ export const getRecommendedProviders = async (req, res) => {
             });
         }
 
-        // Determine the day of week
-        const dayOfWeek = new Date(date).toLocaleString('en-US', { weekday: 'short' }); // Mon, Tue, etc.
+        const dayOfWeek = new Date(date).toLocaleString('en-US', { weekday: 'short' });
 
-        // Find available providers
         const services = await Service.findAll({
             where: {
                 title: { [Op.like]: `%${category}%` },
@@ -27,7 +25,7 @@ export const getRecommendedProviders = async (req, res) => {
             include: [
                 {
                     model: User,
-                    attributes: ["user_id", "name", "role", "availability_status", "approval_status"],
+                    attributes: ["user_id", "name", "role", "availability_status", "approval_status", "profile_picture"],
                     where: {
                         role: "provider",
                         approval_status: "approved",
@@ -45,28 +43,28 @@ export const getRecommendedProviders = async (req, res) => {
                 },
                 {
                     model: Review,
-                    attributes: ["rating"]
+                    attributes: []
                 }
-            ]
+            ],
+            attributes: {
+                include: [
+                    [fn("AVG", col("Reviews.rating")), "average_rating"],
+                    [fn("COUNT", col("Reviews.review_id")), "total_reviews"]
+                ]
+            },
+            group: ["Service.service_id"]
         });
 
-        // Compute average rating and total reviews
-        const result = services.map(service => {
-            const reviews = service.Reviews || [];
-            const avgRating = reviews.length
-                ? reviews.reduce((sum, r) => sum + r.rating, 0) / reviews.length
-                : 0;
-
-            return {
-                provider_id: service.User.user_id,
-                provider_name: service.User.name,
-                service_id: service.service_id,
-                service_title: service.title,
-                location: service.location,
-                average_rating: avgRating.toFixed(2),
-                total_reviews: reviews.length
-            };
-        });
+        const result = services.map(service => ({
+            provider_id: service.User.user_id,
+            provider_name: service.User.name,
+            provider_picture: service.User.profile_picture,
+            service_id: service.service_id,
+            service_title: service.title,
+            location: service.location,
+            average_rating: parseFloat(service.get("average_rating")) || 0,
+            total_reviews: parseInt(service.get("total_reviews")) || 0
+        }));
 
         // Sort by average_rating descending
         result.sort((a, b) => b.average_rating - a.average_rating);

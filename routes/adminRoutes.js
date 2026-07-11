@@ -10,4 +10,7 @@ router.get("/providers/pending", authMiddleware, roleMiddleware("admin"), getPen
 router.put("/providers/:providerId/approve", authMiddleware, roleMiddleware("admin"), approveProvider);
 router.put("/providers/:providerId/reject", authMiddleware, roleMiddleware("admin"), rejectProvider);
 
+// Optional future improvement: unified status update
+// router.put("/providers/:providerId/status", authMiddleware, roleMiddleware("admin"), updateProviderStatus);
+
 export default router;

@@ -3,7 +3,6 @@ import sequelize from "../config/sequelize.js";
 import User from "./User.js";
 import Service from "./Service.js";
 
-
 const Review = sequelize.define("Review", {
     review_id: {
         type: DataTypes.INTEGER,
@@ -24,15 +23,31 @@ const Review = sequelize.define("Review", {
     },
     rating: {
         type: DataTypes.FLOAT,
-        allowNull: false
+        allowNull: false,
+        validate: {
+            min: 1,
+            max: 5
+        }
     },
     comment: {
         type: DataTypes.TEXT,
-        allowNull: true
+        allowNull: true,
+        defaultValue: ""
     }
 }, {
     tableName: "reviews",
-    timestamps: true
+    timestamps: true,
+    createdAt: "created_at",
+    updatedAt: "updated_at",
+    indexes: [
+        { fields: ['provider_id'] },
+        { fields: ['service_id'] }
+    ],
+    hooks: {
+        beforeCreate: (review) => {
+            review.rating = Math.round(review.rating * 10) / 10;
+        }
+    }
 });
 
 // Associations

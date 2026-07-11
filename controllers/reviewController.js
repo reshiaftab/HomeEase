@@ -1,77 +1,72 @@
-import db from "../config/db.js";
+import Review from "../models/Review.js";
+import Booking from "../models/Booking.js";
+import User from "../models/User.js";
 
 // Add Review
-export const addReview = (req, res) => {
+export const addReview = async (req, res) => {
+    try {
+        const residentId = req.user.id;
+        const { booking_id, rating, comment } = req.body;
 
-    const residentId = req.user.id;
-    const { booking_id, rating, comment } = req.body;
+        if (!booking_id || !rating) {
+            return res.status(400).json({ message: "booking_id and rating are required" });
+        }
 
-    const findBooking = `
-        SELECT provider_id 
-        FROM bookings
-        WHERE booking_id = ? AND resident_id = ?
-    `;
+        // Find booking and provider
+        const booking = await Booking.findOne({
+            where: { booking_id, resident_id: residentId }
+        });
 
-    db.query(findBooking, [booking_id, residentId], (err, bookingResult) => {
-
-        if (err) return res.status(500).json({ error: err.message });
-
-        if (bookingResult.length === 0) {
+        if (!booking) {
             return res.status(404).json({ message: "Booking not found" });
         }
 
-        const providerId = bookingResult[0].provider_id;
+        const providerId = booking.provider_id;
 
-        const insertReview = `
-            INSERT INTO reviews (booking_id, resident_id, provider_id, rating, comment)
-            VALUES (?, ?, ?, ?, ?)
-        `;
+        // Create review
+        const newReview = await Review.create({
+            booking_id,
+            resident_id: residentId,
+            provider_id: providerId,
+            rating,
+            comment
+        });
 
-        db.query(
-            insertReview,
-            [booking_id, residentId, providerId, rating, comment],
-            (err, result) => {
+        res.status(201).json({
+            message: "Review added successfully",
+            review: newReview
+        });
 
-                if (err) {
-                    return res.status(500).json({ error: err.message });
-                }
-
-                res.status(201).json({
-                    message: "Review added successfully"
-                });
-
-            }
-        );
-
-    });
-
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
 };
 
-
 // Get Provider Reviews
-export const getProviderReviews = (req, res) => {
+export const getProviderReviews = async (req, res) => {
+    try {
+        const providerId = parseInt(req.params.providerId);
+        if (isNaN(providerId)) return res.status(400).json({ message: "Invalid provider ID" });
 
-    const providerId = req.params.providerId;
+        const reviews = await Review.findAll({
+            where: { provider_id: providerId },
+            include: [
+                { model: User, as: "resident", attributes: ["name"] }
+            ],
+            order: [["created_at", "DESC"]]
+        });
 
-    const sql = `
-        SELECT 
-            r.review_id,
-            r.rating,
-            r.comment,
-            r.created_at,
-            u.name AS resident_name
-        FROM reviews r
-        JOIN users u ON r.resident_id = u.user_id
-        WHERE r.provider_id = ?
-        ORDER BY r.created_at DESC
-    `;
+        const result = reviews.map(r => ({
+            review_id: r.review_id,
+            rating: r.rating,
+            comment: r.comment,
+            created_at: r.created_at,
+            resident_name: r.resident.name
+        }));
 
-    db.query(sql, [providerId], (err, results) => {
+        res.status(200).json(result);
 
-        if (err) return res.status(500).json({ error: err.message });
-
-        res.status(200).json(results);
-
-    });
-
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
 };

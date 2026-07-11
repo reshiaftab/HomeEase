@@ -2,6 +2,7 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import crypto from "crypto";
 import nodemailer from "nodemailer";
+import { Op } from "sequelize";
 import User from "../models/User.js";
 
 // =========================
@@ -11,26 +12,20 @@ export const register = async (req, res) => {
     try {
         const { name, email, password, phone, role } = req.body;
 
-        // ----- VALIDATION -----
-        if (!name || name.trim().length < 3) {
-            return res.status(400).json({ message: "Name must be at least 3 characters" });
-        }
+        // Validation
+        if (!name || name.trim().length < 3) return res.status(400).json({ message: "Name must be at least 3 characters" });
         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
         if (!email || !emailRegex.test(email)) return res.status(400).json({ message: "Invalid email" });
         if (!phone || phone.length < 10) return res.status(400).json({ message: "Invalid phone number" });
         const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&]).{8,}$/;
-        if (!password || !passwordRegex.test(password)) {
-            return res.status(400).json({ message: "Password must be min 8 chars with uppercase, lowercase, number, special char" });
-        }
-        if (!["resident", "provider", "admin"].includes(role)) {
-            return res.status(400).json({ message: "Invalid role" });
-        }
+        if (!password || !passwordRegex.test(password)) return res.status(400).json({ message: "Password must be min 8 chars with uppercase, lowercase, number, special char" });
+        if (!["resident", "provider", "admin"].includes(role)) return res.status(400).json({ message: "Invalid role" });
 
-        // ----- CHECK EXISTING USER -----
+        // Check existing user
         const existingUser = await User.findOne({ where: { email } });
         if (existingUser) return res.status(400).json({ message: "Email already registered" });
 
-        // ----- PROVIDER DOCUMENTS -----
+        // Provider documents
         let police_certificate = null;
         let professional_certificate = null;
         if (role === "provider") {
@@ -41,10 +36,10 @@ export const register = async (req, res) => {
             professional_certificate = req.files.professional_certificate[0].filename;
         }
 
-        // ----- HASH PASSWORD -----
+        // Hash password
         const hashedPassword = await bcrypt.hash(password, 10);
 
-        // ----- CREATE USER -----
+        // Create user
         const newUser = await User.create({
             name: name.trim(),
             email,
@@ -84,12 +79,10 @@ export const login = async (req, res) => {
         const user = await User.findOne({ where: { email } });
         if (!user) return res.status(400).json({ message: "User not found" });
 
-        // ----- PROVIDER APPROVAL CHECK -----
         if (user.role === "provider" && user.approval_status !== "approved") {
             return res.status(403).json({ message: "Provider account is pending admin approval" });
         }
 
-        // ----- PASSWORD CHECK -----
         const isMatch = await bcrypt.compare(password, user.password);
         if (!isMatch) return res.status(400).json({ message: "Invalid credentials" });
 
@@ -123,13 +116,12 @@ export const forgotPassword = async (req, res) => {
         const user = await User.findOne({ where: { email } });
         if (!user) return res.status(404).json({ message: "User not found" });
 
-        // Generate token
-        const token = crypto.randomBytes(20).toString("hex");
+        const token = crypto.randomBytes(32).toString("hex"); // stronger token
         user.reset_password_token = token;
         user.reset_password_expires = Date.now() + 3600000; // 1 hour
         await user.save();
 
-        // Send email using SMTP
+        // SMTP email
         const transporter = nodemailer.createTransport({
             host: process.env.SMTP_HOST,
             port: process.env.SMTP_PORT,
@@ -138,8 +130,7 @@ export const forgotPassword = async (req, res) => {
         });
 
         const resetUrl = `${process.env.FRONTEND_URL}/reset-password/${token}`;
-
-        const mailOptions = {
+        await transporter.sendMail({
             from: `"HomeEase Support" <${process.env.SMTP_USER}>`,
             to: user.email,
             subject: "Password Reset Request",
@@ -147,9 +138,8 @@ export const forgotPassword = async (req, res) => {
                    <p>You requested a password reset. Click the link below:</p>
                    <a href="${resetUrl}">Reset Password</a>
                    <p>Expires in 1 hour.</p>`
-        };
+        });
 
-        await transporter.sendMail(mailOptions);
         res.status(200).json({ message: "Password reset link sent to your email" });
 
     } catch (error) {
@@ -168,7 +158,7 @@ export const resetPassword = async (req, res) => {
         const user = await User.findOne({
             where: {
                 reset_password_token: token,
-                reset_password_expires: { [User.sequelize.Op.gt]: Date.now() }
+                reset_password_expires: { [Op.gt]: Date.now() } // Use Sequelize Op
             }
         });
 

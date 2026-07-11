@@ -14,26 +14,42 @@ const Service = sequelize.define("Service", {
     },
     title: {
         type: DataTypes.STRING(100),
-        allowNull: false
+        allowNull: false,
+        validate: { notEmpty: true }
     },
     description: {
         type: DataTypes.TEXT,
-        allowNull: true
+        allowNull: true,
+        defaultValue: ""
     },
     price: {
         type: DataTypes.FLOAT,
-        allowNull: false
+        allowNull: false,
+        validate: { min: 0 }
     },
     location: {
         type: DataTypes.STRING(100),
-        allowNull: true
+        allowNull: true,
+        defaultValue: ""
     }
 }, {
     tableName: "services",
-    timestamps: true
+    timestamps: true,
+    createdAt: "created_at",
+    updatedAt: "updated_at",
+    indexes: [
+        { fields: ['provider_id'] },
+        { fields: ['title'] }
+    ],
+    hooks: {
+        beforeCreate: (service) => {
+            if (service.title) service.title = service.title.trim();
+            if (service.location) service.location = service.location.trim();
+        }
+    }
 });
 
-// Associate service with provider (User)
+// Associations
 Service.belongsTo(User, { foreignKey: "provider_id" });
 
 export default Service;

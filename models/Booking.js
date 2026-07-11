@@ -23,7 +23,15 @@ const Booking = sequelize.define("Booking", {
     },
     booking_date: {
         type: DataTypes.DATEONLY,
-        allowNull: false
+        allowNull: false,
+        validate: {
+            isValid(value) {
+                const today = new Date().toISOString().split('T')[0];
+                if (value < today) {
+                    throw new Error("booking_date cannot be in the past");
+                }
+            }
+        }
     },
     booking_time: {
         type: DataTypes.TIME,
@@ -35,9 +43,14 @@ const Booking = sequelize.define("Booking", {
     }
 }, {
     tableName: "bookings",
-    createdAt: "created_at",   // map Sequelize createdAt to your column
-    updatedAt: "updated_at",   // map Sequelize updatedAt to your column
-    timestamps: true
+    timestamps: true,
+    createdAt: "created_at",
+    updatedAt: "updated_at",
+    indexes: [
+        { fields: ['provider_id'] },
+        { fields: ['resident_id'] },
+        { fields: ['booking_date'] }
+    ]
 });
 
 // Associations

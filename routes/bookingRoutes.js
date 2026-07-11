@@ -13,9 +13,22 @@ const router = express.Router();
 router.post("/", authMiddleware, roleMiddleware("resident"), createBooking);
 
 // View my bookings (resident or provider)
-router.get("/my-bookings", authMiddleware, roleMiddleware("resident", "provider"), getMyBookings);
+router.get("/my-bookings", authMiddleware, (req,res,next) => {
+    if (!["resident","provider"].includes(req.user.role)) {
+        return res.status(403).json({ message: "Forbidden" });
+    }
+    next();
+}, getMyBookings);
 
-// Update booking status (provider only)
-router.put("/:bookingId/status", authMiddleware, roleMiddleware("provider"), updateBookingStatus);
+// Update booking status (provider only) with validation
+router.put("/:bookingId/status", authMiddleware, roleMiddleware("provider"), (req,res,next)=>{
+    const bookingId = parseInt(req.params.bookingId);
+    if (isNaN(bookingId)) return res.status(400).json({message: "Invalid bookingId"});
+    const validStatus = ["pending","accepted","completed","rejected"];
+    if (!validStatus.includes(req.body.status)) {
+        return res.status(400).json({message: "Invalid status value"});
+    }
+    next();
+}, updateBookingStatus);
 
 export default router;

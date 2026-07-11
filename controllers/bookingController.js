@@ -11,16 +11,18 @@ export const createBooking = async (req, res) => {
         const residentId = req.user.id;
         const { service_id, booking_date, booking_time } = req.body;
 
-        // 1️⃣ Get the service
+        // Validate inputs
+        if (!service_id || !booking_date || !booking_time) {
+            return res.status(400).json({ message: "service_id, booking_date and booking_time are required" });
+        }
+
         const service = await Service.findByPk(service_id);
         if (!service) {
             return res.status(404).json({ message: "Service not found" });
         }
         const providerId = service.provider_id;
 
-        // 2️⃣ Check provider availability
-        const dayOfWeek = new Date(booking_date)
-            .toLocaleString('en-US', { weekday: 'short' }); // Mon, Tue, etc.
+        const dayOfWeek = new Date(booking_date).toLocaleString('en-US', { weekday: 'short' });
 
         const availableSlot = await ProviderAvailability.findOne({
             where: {
@@ -35,20 +37,14 @@ export const createBooking = async (req, res) => {
             return res.status(400).json({ message: "Provider is not available at this time" });
         }
 
-        // 3️⃣ Optional: check for overlapping bookings
         const existingBooking = await Booking.findOne({
-            where: {
-                provider_id: providerId,
-                booking_date,
-                booking_time
-            }
+            where: { provider_id: providerId, booking_date, booking_time }
         });
 
         if (existingBooking) {
             return res.status(400).json({ message: "This time slot is already booked" });
         }
 
-        // 4️⃣ Create booking
         const newBooking = await Booking.create({
             resident_id: residentId,
             service_id,
@@ -58,13 +54,20 @@ export const createBooking = async (req, res) => {
             status: "pending"
         });
 
-        // 5️⃣ Create notifications
         await createNotification(providerId, "booking", `New booking request for ${booking_date} at ${booking_time}`);
         await createNotification(residentId, "booking", `Your booking request for ${booking_date} at ${booking_time} has been sent to the provider.`);
 
+        // Return full booking details including service and provider info
+        const bookingDetails = await Booking.findByPk(newBooking.booking_id, {
+            include: [
+                { model: Service, attributes: ["title", "description", "price"] },
+                { model: User, as: "provider", attributes: ["name", "email", "phone"] }
+            ]
+        });
+
         res.status(201).json({
             message: "Booking created successfully",
-            bookingId: newBooking.booking_id
+            booking: bookingDetails
         });
 
     } catch (error) {
@@ -114,6 +117,12 @@ export const updateBookingStatus = async (req, res) => {
         const { bookingId } = req.params;
         const { status } = req.body;
 
+        // Validate status
+        const validStatus = ["pending", "accepted", "completed", "rejected"];
+        if (!validStatus.includes(status)) {
+            return res.status(400).json({ message: "Invalid status value" });
+        }
+
         const booking = await Booking.findByPk(bookingId);
 
         if (!booking || booking.provider_id !== providerId) {
@@ -123,7 +132,6 @@ export const updateBookingStatus = async (req, res) => {
         booking.status = status;
         await booking.save();
 
-        // Notification on status update
         await createNotification(booking.resident_id, "booking", `Your booking status has been updated to "${status}" by the provider.`);
 
         res.status(200).json({ message: "Booking status updated successfully" });

@@ -1,16 +1,12 @@
 import Notification from "../models/Notification.js";
-import { io } from "../app.js"; // Import the Socket.IO instance from app.js
+import { getIo } from "../socket.js"; // safe import
 
 // Create notification
 export const createNotification = async (user_id, type, message) => {
     try {
-        const notification = await Notification.create({
-            user_id,
-            type,
-            message
-        });
+        const notification = await Notification.create({ user_id, type, message });
 
-        // Emit real-time notification to the specific user
+        const io = getIo();
         io.emit(`notification-${user_id}`, notification);
 
         return notification;
@@ -25,7 +21,7 @@ export const getUserNotifications = async (req, res) => {
         const userId = req.user.id;
         const notifications = await Notification.findAll({
             where: { user_id: userId },
-            order: [["createdAt", "DESC"]]
+            order: [["created_at", "DESC"]]
         });
         res.status(200).json(notifications);
     } catch (error) {
@@ -39,8 +35,10 @@ export const markAsRead = async (req, res) => {
         const { id } = req.params;
         const notification = await Notification.findByPk(id);
         if (!notification) return res.status(404).json({ message: "Notification not found" });
+
         notification.is_read = true;
         await notification.save();
+
         res.status(200).json({ message: "Notification marked as read" });
     } catch (error) {
         res.status(500).json({ error: error.message });

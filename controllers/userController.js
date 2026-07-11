@@ -18,17 +18,12 @@ export const getProfile = async (req, res) => {
         });
 
         if (!user) {
-            return res.status(404).json({
-                message: "User not found"
-            });
+            return res.status(404).json({ message: "User not found" });
         }
 
-        res.status(200).json(user);
-
+        res.status(200).json({ success: true, data: user });
     } catch (error) {
-        res.status(500).json({
-            error: error.message
-        });
+        res.status(500).json({ success: false, error: error.message });
     }
 };
 
@@ -40,21 +35,15 @@ export const updateProfile = async (req, res) => {
         const user = await User.findByPk(userId);
 
         if (!user) {
-            return res.status(404).json({
-                message: "User not found"
-            });
+            return res.status(404).json({ message: "User not found" });
         }
 
         if (name && name.trim().length < 3) {
-            return res.status(400).json({
-                message: "Name must be at least 3 characters long"
-            });
+            return res.status(400).json({ message: "Name must be at least 3 characters long" });
         }
 
-        if (phone && phone.length < 10) {
-            return res.status(400).json({
-                message: "Phone number must be at least 10 digits"
-            });
+        if (phone && !/^\d{10,}$/.test(phone)) {
+            return res.status(400).json({ message: "Phone must be at least 10 digits and numeric" });
         }
 
         user.name = name ? name.trim() : user.name;
@@ -67,8 +56,9 @@ export const updateProfile = async (req, res) => {
         await user.save();
 
         res.status(200).json({
+            success: true,
             message: "Profile updated successfully",
-            user: {
+            data: {
                 user_id: user.user_id,
                 name: user.name,
                 email: user.email,
@@ -79,8 +69,6 @@ export const updateProfile = async (req, res) => {
         });
 
     } catch (error) {
-        res.status(500).json({
-            error: error.message
-        });
+        res.status(500).json({ success: false, error: error.message });
     }
 };

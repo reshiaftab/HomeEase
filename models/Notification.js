@@ -14,11 +14,16 @@ const Notification = sequelize.define("Notification", {
     },
     type: {
         type: DataTypes.ENUM("booking", "approval", "general"),
-        allowNull: false
+        allowNull: false,
+        defaultValue: "general",
+        validate: {
+            isIn: [["booking", "approval", "general"]]
+        }
     },
     message: {
         type: DataTypes.TEXT,
-        allowNull: false
+        allowNull: false,
+        validate: { notEmpty: true }
     },
     is_read: {
         type: DataTypes.BOOLEAN,
@@ -26,10 +31,21 @@ const Notification = sequelize.define("Notification", {
     }
 }, {
     tableName: "notifications",
-    timestamps: true
+    timestamps: true,
+    createdAt: "created_at",
+    updatedAt: "updated_at",
+    indexes: [
+        { fields: ['user_id'] },
+        { fields: ['is_read'] }
+    ],
+    hooks: {
+        beforeCreate: (notification) => {
+            notification.message = notification.message.trim();
+        }
+    }
 });
 
-// Associate Notification with User
+// Associations
 Notification.belongsTo(User, { foreignKey: "user_id" });
 
 export default Notification;
