@@ -21,6 +21,14 @@ const Booking = sequelize.define("Booking", {
         type: DataTypes.INTEGER,
         allowNull: false
     },
+    latitude: {
+        type: DataTypes.FLOAT,
+        allowNull: true
+    },
+    longitude: {
+        type: DataTypes.FLOAT,
+        allowNull: true
+    },
     booking_date: {
         type: DataTypes.DATEONLY,
         allowNull: false,

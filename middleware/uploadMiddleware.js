@@ -1,16 +1,27 @@
 import multer from "multer";
 import path from "path";
 import { v4 as uuidv4 } from "uuid";
+import fs from "fs";
+
+// Ensure upload directories exist
+const ensureDirExists = (dir) => {
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+};
 
 const storage = multer.diskStorage({
     destination: (req, file, cb) => {
+        let uploadPath = "uploads/";
+
         if (file.fieldname === "police_certificate" || file.fieldname === "professional_certificate") {
-            cb(null, "uploads/certificates/");
+            uploadPath = "uploads/certificates/";
         } else if (file.fieldname === "profile_picture") {
-            cb(null, "uploads/profile_pictures/");
-        } else {
-            cb(null, "uploads/");
+            uploadPath = "uploads/profile_pictures/";
         }
+
+        // Ensure directory exists
+        ensureDirExists(uploadPath);
+
+        cb(null, uploadPath);
     },
     filename: (req, file, cb) => {
         const uniqueName = uuidv4() + path.extname(file.originalname);
@@ -35,7 +46,7 @@ const fileFilter = (req, file, cb) => {
 
 const upload = multer({
     storage,
-    limits: { fileSize: 2 * 1024 * 1024 },
+    limits: { fileSize: 2 * 1024 * 1024 }, // 2MB
     fileFilter
 });
 

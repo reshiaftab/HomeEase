@@ -50,6 +50,23 @@ const User = sequelize.define("User", {
         allowNull: true,
         defaultValue: null
     },
+    cnic: {
+        type: DataTypes.STRING(20),
+        allowNull: true,
+        unique: true
+    },
+    province: {
+        type: DataTypes.STRING(50),
+        allowNull: true
+    },
+    city: {
+        type: DataTypes.STRING(50),
+        allowNull: true
+    },
+    service_category: {               // <-- Added field for provider signup
+        type: DataTypes.STRING(50),
+        allowNull: true
+    },
     availability_status: {
         type: DataTypes.ENUM("available", "unavailable"),
         allowNull: false,
@@ -76,10 +93,12 @@ const User = sequelize.define("User", {
     tableName: "users",
     timestamps: true,
     createdAt: "created_at",
-    updatedAt: false,  // no updated_at in your DB
+    updatedAt: false,
     indexes: [
         { fields: ['role'] },
-        { fields: ['approval_status'] }
+        { fields: ['approval_status'] },
+        { fields: ['cnic'] },
+        { fields: ['service_category'] } // <-- optional index for filtering/search
     ],
     hooks: {
         beforeCreate: (user) => {

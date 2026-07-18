@@ -16,6 +16,7 @@ import providerRoutes from "./routes/providerRoutes.js";
 import providerDashboardRoutes from "./routes/providerDashboardRoutes.js";
 import reviewRoutes from "./routes/reviewRoutes.js";
 import serviceRoutes from "./routes/serviceRoutes.js";
+import chatRoutes from "./routes/chatRoutes.js"; // new chat routes
 
 // Models
 import User from "./models/User.js";
@@ -24,9 +25,10 @@ import ProviderAvailability from "./models/ProviderAvailability.js";
 import Review from "./models/Review.js";
 import Notification from "./models/Notification.js";
 import Booking from "./models/Booking.js";
+import ChatMessage from "./models/ChatMessage.js"; // new chat model
 
 // Socket.IO
-import { initSocket } from "./socket.js";
+import { initSocket, getIo } from "./socket.js";
 
 dotenv.config();
 
@@ -35,6 +37,12 @@ const server = http.createServer(app);
 
 // Initialize Socket.IO
 initSocket(server);
+
+// Make io accessible in req
+app.use((req, res, next) => {
+    req.io = getIo();
+    next();
+});
 
 // Middleware
 app.use(cors());
@@ -52,6 +60,7 @@ app.use("/api/provider", providerRoutes);
 app.use("/api/provider/dashboard", providerDashboardRoutes);
 app.use("/api/review", reviewRoutes);
 app.use("/api/service", serviceRoutes);
+app.use("/api/chat", chatRoutes); // new chat routes
 
 // Serve uploads
 app.use("/uploads", express.static("uploads"));
@@ -70,7 +79,7 @@ app.use((err, req, res, next) => {
 const PORT = process.env.PORT || 5000;
 
 // Sync all models and start server
-const models = [User, Service, ProviderAvailability, Review, Notification, Booking];
+const models = [User, Service, ProviderAvailability, Review, Notification, Booking, ChatMessage];
 
 sequelize.authenticate()
     .then(async () => {
@@ -78,6 +87,27 @@ sequelize.authenticate()
 
         // Sync all models with alter:true
         await Promise.all(models.map(model => model.sync({ alter: true })));
+
+        // Socket.IO live events for chat
+        const io = getIo();
+        io.on("connection", (socket) => {
+            console.log("Client connected:", socket.id);
+
+            // Join a booking room
+            socket.on("joinBooking", (bookingId) => {
+                socket.join(`booking_${bookingId}`);
+            });
+
+            // Receive message and broadcast to booking room
+            socket.on("sendMessage", async ({ bookingId, senderId, receiverId, message }) => {
+                const chat = await ChatMessage.create({ booking_id: bookingId, sender_id: senderId, receiver_id, message });
+                io.to(`booking_${bookingId}`).emit("receiveMessage", chat);
+            });
+
+            socket.on("disconnect", () => {
+                console.log("Client disconnected:", socket.id);
+            });
+        });
 
         server.listen(PORT, () => {
             console.log(`Server running on port ${PORT}`);

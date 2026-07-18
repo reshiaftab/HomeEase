@@ -9,19 +9,17 @@ import { createNotification } from "./notificationController.js";
 export const createBooking = async (req, res) => {
     try {
         const residentId = req.user.id;
-        const { service_id, booking_date, booking_time } = req.body;
+        const { service_id, booking_date, booking_time, latitude, longitude } = req.body;
 
         // Validate inputs
-        if (!service_id || !booking_date || !booking_time) {
-            return res.status(400).json({ message: "service_id, booking_date and booking_time are required" });
+        if (!service_id || !booking_date || !booking_time || latitude == null || longitude == null) {
+            return res.status(400).json({ message: "service_id, booking_date, booking_time, latitude, and longitude are required" });
         }
 
         const service = await Service.findByPk(service_id);
-        if (!service) {
-            return res.status(404).json({ message: "Service not found" });
-        }
-        const providerId = service.provider_id;
+        if (!service) return res.status(404).json({ message: "Service not found" });
 
+        const providerId = service.provider_id;
         const dayOfWeek = new Date(booking_date).toLocaleString('en-US', { weekday: 'short' });
 
         const availableSlot = await ProviderAvailability.findOne({
@@ -33,17 +31,13 @@ export const createBooking = async (req, res) => {
             }
         });
 
-        if (!availableSlot) {
-            return res.status(400).json({ message: "Provider is not available at this time" });
-        }
+        if (!availableSlot) return res.status(400).json({ message: "Provider is not available at this time" });
 
         const existingBooking = await Booking.findOne({
             where: { provider_id: providerId, booking_date, booking_time }
         });
 
-        if (existingBooking) {
-            return res.status(400).json({ message: "This time slot is already booked" });
-        }
+        if (existingBooking) return res.status(400).json({ message: "This time slot is already booked" });
 
         const newBooking = await Booking.create({
             resident_id: residentId,
@@ -51,13 +45,14 @@ export const createBooking = async (req, res) => {
             provider_id: providerId,
             booking_date,
             booking_time,
+            latitude,
+            longitude,
             status: "pending"
         });
 
         await createNotification(providerId, "booking", `New booking request for ${booking_date} at ${booking_time}`);
         await createNotification(residentId, "booking", `Your booking request for ${booking_date} at ${booking_time} has been sent to the provider.`);
 
-        // Return full booking details including service and provider info
         const bookingDetails = await Booking.findByPk(newBooking.booking_id, {
             include: [
                 { model: Service, attributes: ["title", "description", "price"] },
