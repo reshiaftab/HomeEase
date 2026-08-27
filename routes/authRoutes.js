@@ -87,9 +87,26 @@ router.post(
 // =========================
 // Reset Password
 // =========================
+
 router.post(
     "/update-password",
-    validate([ body("email").isEmail().withMessage("Valid email is required"), body("pin").isLength({ min: 4, max: 4 }).withMessage("PIN must be 4 digits"), body("newPassword").isLength({ min: 8 }).withMessage("Password must be at least 8 characters") ]),
+    validate([
+        body("email")
+            .isEmail()
+            .withMessage("Valid email is required"),
+
+        body("pin")
+            .isLength({ min: 4, max: 4 })
+            .withMessage("PIN must be 4 digits"),
+
+        body("newPassword")
+            .isLength({ min: 8 })
+            .withMessage("Password must be at least 8 characters"),
+
+        body("confirmPassword")
+            .notEmpty()
+            .withMessage("Confirm password is required")
+    ]),
     updatePassword
 );
 

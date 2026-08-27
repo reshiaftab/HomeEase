@@ -50,6 +50,10 @@ const Service = sequelize.define("Service", {
 });
 
 // Associations
-Service.belongsTo(User, { foreignKey: "provider_id" });
+
+Service.belongsTo(User, {
+    as: "provider",
+    foreignKey: "provider_id"
+});
 
 export default Service;

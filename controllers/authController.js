@@ -4,6 +4,7 @@ import crypto from "crypto";
 import nodemailer from "nodemailer";
 import { Op } from "sequelize";
 import User from "../models/User.js";
+import { createNotification } from "./notificationController.js";
 
 // =========================
 // REGISTER
@@ -100,6 +101,38 @@ export const register = async (req, res) => {
             approval_status: isProviderSignup ? "pending" : "approved",
             submitted_at: isProviderSignup ? new Date() : null
         });
+        // =========================
+// Notify Admin
+// =========================
+
+const admin = await User.findOne({
+    where: {
+        role: "admin"
+    }
+});
+
+
+if (admin) {
+
+    if (isProviderSignup) {
+
+        await createNotification(
+            admin.user_id,
+            "registration",
+            `New provider registration received from ${newUser.name}. Awaiting approval.`
+        );
+
+    } else {
+
+        await createNotification(
+            admin.user_id,
+            "registration",
+            `New resident ${newUser.name} has registered.`
+        );
+
+    }
+
+}
 
         res.status(201).json({
             message: isProviderSignup 
@@ -230,11 +263,48 @@ export const verifyPin = async (req, res) => {
 // POST /api/auth/update-password
 export const updatePassword = async (req, res) => {
     try {
-        const { email, pin, newPassword } = req.body;
+        const { email, pin, newPassword, confirmPassword } = req.body;
 
-        if (!email) return res.status(400).json({ message: "Email is required" });
-        if (!pin) return res.status(400).json({ message: "PIN is required" });
-        if (!newPassword) return res.status(400).json({ message: "New password is required" });
+        if (!email) {
+            return res.status(400).json({
+                message: "Email is required"
+            });
+        }
+
+        if (!pin) {
+            return res.status(400).json({
+                message: "PIN is required"
+            });
+        }
+
+        if (!newPassword) {
+            return res.status(400).json({
+                message: "New password is required"
+            });
+        }
+
+        if (!confirmPassword) {
+            return res.status(400).json({
+                message: "Confirm password is required"
+            });
+        }
+
+        // Check both passwords match
+        if (newPassword !== confirmPassword) {
+            return res.status(400).json({
+                message: "New password and confirm password do not match"
+            });
+        }
+
+        // Validate password strength
+        const passwordRegex =
+            /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&]).{8,}$/;
+
+        if (!passwordRegex.test(newPassword)) {
+            return res.status(400).json({
+                message: "Password must be min 8 chars with uppercase, lowercase, number, special char"
+            });
+        }
 
         const user = await User.findOne({
             where: {
@@ -244,19 +314,29 @@ export const updatePassword = async (req, res) => {
             }
         });
 
-        if (!user) return res.status(400).json({ message: "Invalid or expired PIN" });
+        if (!user) {
+            return res.status(400).json({
+                message: "Invalid or expired PIN"
+            });
+        }
 
         // Hash new password
         const hashedPassword = await bcrypt.hash(newPassword, 10);
+
         user.password = hashedPassword;
         user.reset_password_token = null;
         user.reset_password_expires = null;
 
         await user.save();
 
-        res.status(200).json({ success: true, message: "Password updated successfully" });
+        res.status(200).json({
+            success: true,
+            message: "Password updated successfully"
+        });
 
     } catch (error) {
-        res.status(500).json({ error: error.message });
+        res.status(500).json({
+            error: error.message
+        });
     }
 };

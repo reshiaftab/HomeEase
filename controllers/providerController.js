@@ -66,7 +66,6 @@ export const getRecommendedProviders = async (req, res) => {
             total_reviews: parseInt(service.get("total_reviews")) || 0
         }));
 
-        // Sort by average_rating descending
         result.sort((a, b) => b.average_rating - a.average_rating);
 
         res.status(200).json(result);
@@ -74,5 +73,54 @@ export const getRecommendedProviders = async (req, res) => {
     } catch (error) {
         console.error(error);
         res.status(500).json({ error: error.message });
+    }
+};
+
+
+// GET /api/provider/category/:category
+// Get all approved providers by service category
+export const getProvidersByCategory = async (req, res) => {
+    try {
+
+        const { category } = req.params;
+
+        if (!category) {
+            return res.status(400).json({
+                message: "Category is required"
+            });
+        }
+
+        const providers = await User.findAll({
+            where: {
+                role: "provider",
+                service_category: category,
+                approval_status: "approved"
+            },
+            attributes: [
+                "user_id",
+                "name",
+                "phone",
+                "service_category",
+                "province",
+                "city",
+                "profile_picture",
+                "availability_status"
+            ]
+        });
+
+        res.status(200).json({
+            success: true,
+            count: providers.length,
+            providers
+        });
+
+    } catch (error) {
+
+        console.error(error);
+
+        res.status(500).json({
+            error: error.message
+        });
+
     }
 };

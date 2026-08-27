@@ -51,8 +51,22 @@ const Review = sequelize.define("Review", {
 });
 
 // Associations
-Review.belongsTo(User, { as: "resident", foreignKey: "resident_id" });
-Review.belongsTo(User, { as: "provider", foreignKey: "provider_id" });
-Review.belongsTo(Service, { foreignKey: "service_id" });
+
+Review.belongsTo(User, { 
+    as: "resident",
+    foreignKey: "resident_id"
+});
+
+
+Review.belongsTo(User, { 
+    as: "provider",
+    foreignKey: "provider_id"
+});
+
+
+Review.belongsTo(Service, { 
+    as: "service",
+    foreignKey: "service_id"
+});
 
 export default Review;
