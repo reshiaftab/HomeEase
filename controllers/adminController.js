@@ -344,16 +344,12 @@ export const getAllProviders = async(req,res)=>{
             where:whereCondition,
 
 
-            attributes:[
-
-                "user_id",
-                "name",
-                "email",
-                "phone",
-                "availability_status",
-                "approval_status"
-
-            ],
+            attributes: [
+                        "user_id","name","email","phone",
+                        "availability_status","approval_status",
+                        "city","province","cnic","service_category",
+                        "police_certificate","professional_certificate","profile_picture",
+                        ],
 
 
 
@@ -435,7 +431,9 @@ export const getAllProviders = async(req,res)=>{
 
 
             service:
-                provider.services?.[0]?.title || "N/A",
+                provider.services?.[0]?.title ||
+                provider.service_category ||
+                "N/A",
 
 
 
@@ -452,7 +450,36 @@ export const getAllProviders = async(req,res)=>{
 
 
             approval_status:
-                provider.approval_status
+                provider.approval_status,
+
+            
+            city:
+                provider.city || null,
+
+
+            province:
+                provider.province || null,
+
+
+
+            cnic:
+                provider.cnic || null,
+
+
+            service_category:
+                provider.service_category || null,
+
+
+            police_certificate:
+            provider.police_certificate || null,
+
+
+            professional_certificate:
+            provider.professional_certificate || null,
+
+
+            profile_picture:
+            provider.profile_picture || null
 
 
         }));
