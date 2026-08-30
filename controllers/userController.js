@@ -13,7 +13,10 @@ export const getProfile = async (req, res) => {
                 "role",
                 "profile_picture",
                 "approval_status",
-                "availability_status"
+                "availability_status",
+                "province",
+                "city",
+                "provider_address"
             ]
         });
 
@@ -30,7 +33,7 @@ export const getProfile = async (req, res) => {
 export const updateProfile = async (req, res) => {
     try {
         const userId = req.user.id;
-        const { name, phone } = req.body;
+        const { name, phone, provider_address } = req.body;
 
         const user = await User.findByPk(userId);
 
@@ -46,8 +49,16 @@ export const updateProfile = async (req, res) => {
             return res.status(400).json({ message: "Phone must be at least 10 digits and numeric" });
         }
 
+        if (provider_address && provider_address.trim().length < 5) {
+            return res.status(400).json({ message: "Provider address must be at least 5 characters long" });
+        }
+
         user.name = name ? name.trim() : user.name;
         user.phone = phone || user.phone;
+
+        if (user.role === "provider" && provider_address !== undefined) {
+            user.provider_address = provider_address.trim();
+        }
 
         if (req.file) {
             user.profile_picture = req.file.filename;
@@ -64,7 +75,10 @@ export const updateProfile = async (req, res) => {
                 email: user.email,
                 phone: user.phone,
                 role: user.role,
-                profile_picture: user.profile_picture
+                profile_picture: user.profile_picture,
+                province: user.province,
+                city: user.city,
+                provider_address: user.provider_address
             }
         });
 

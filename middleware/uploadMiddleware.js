@@ -3,7 +3,6 @@ import path from "path";
 import { v4 as uuidv4 } from "uuid";
 import fs from "fs";
 
-// Ensure upload directories exist
 const ensureDirExists = (dir) => {
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 };
@@ -18,35 +17,50 @@ const storage = multer.diskStorage({
             uploadPath = "uploads/profile_pictures/";
         }
 
-        // Ensure directory exists
         ensureDirExists(uploadPath);
-
         cb(null, uploadPath);
     },
     filename: (req, file, cb) => {
-        const uniqueName = uuidv4() + path.extname(file.originalname);
+        const extension = path.extname(file.originalname).toLowerCase();
+        const uniqueName = `${uuidv4()}${extension}`;
         cb(null, uniqueName);
     }
 });
 
 const fileFilter = (req, file, cb) => {
-    const allowedTypes = [
+    const allowedMimeTypes = [
         "image/jpeg",
         "image/jpg",
         "image/png",
         "application/pdf"
     ];
 
-    if (!allowedTypes.includes(file.mimetype)) {
-        return cb(new Error("Only JPG, PNG, and PDF files are allowed"));
+    const allowedExtensions = [
+        ".jpg",
+        ".jpeg",
+        ".png",
+        ".pdf"
+    ];
+
+    const extension = path.extname(file.originalname).toLowerCase();
+    const mimeType = file.mimetype.toLowerCase();
+
+    if (allowedExtensions.includes(extension) && allowedMimeTypes.includes(mimeType)) {
+        return cb(null, true);
     }
 
-    cb(null, true);
+    if (allowedExtensions.includes(extension)) {
+        return cb(null, true);
+    }
+
+    return cb(new Error("Only JPG, JPEG, PNG, and PDF files are allowed"));
 };
 
 const upload = multer({
     storage,
-    limits: { fileSize: 2 * 1024 * 1024 }, // 2MB
+    limits: {
+        fileSize: 2 * 1024 * 1024
+    },
     fileFilter
 });
 

@@ -11,132 +11,131 @@ import { createNotification } from "./notificationController.js";
 // =========================
 export const register = async (req, res) => {
     try {
-        const { name, email, password, phone, role, cnic, province, city, service_category } = req.body;
+        const { name, email, password, phone, role, cnic, province, city, service_category, provider_address } = req.body;
+        const isProviderSignup = role === "provider";
 
-        // Detect provider signup automatically if certificates are uploaded
-        const isProviderSignup = !!(req.files?.police_certificate || req.files?.professional_certificate);
-
-        // -----------------
-        // Basic Validation
-        // -----------------
-        if (!name || name.trim().length < 3) 
+        if (!name || name.trim().length < 3)
             return res.status(400).json({ message: "Name must be at least 3 characters" });
 
         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-        if (!email || !emailRegex.test(email)) 
+        if (!email || !emailRegex.test(email))
             return res.status(400).json({ message: "Invalid email" });
 
-        if (!phone || phone.length < 10) 
+        if (!phone || phone.length < 10)
             return res.status(400).json({ message: "Invalid phone number" });
 
         const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&]).{8,}$/;
-        if (!password || !passwordRegex.test(password)) 
+        if (!password || !passwordRegex.test(password))
             return res.status(400).json({ message: "Password must be min 8 chars with uppercase, lowercase, number, special char" });
 
-        if (!["resident", "provider", "admin"].includes(role) && !isProviderSignup) 
+        if (!["resident", "provider", "admin"].includes(role))
             return res.status(400).json({ message: "Invalid role" });
 
-        // -----------------
-        // Provider-specific validation
-        // -----------------
         let police_certificate = null;
         let professional_certificate = null;
         let profile_picture = null;
 
         if (isProviderSignup) {
-            if (!cnic) return res.status(400).json({ message: "CNIC is required" });
-            if (!province || !city) return res.status(400).json({ message: "Province and city are required" });
-            if (!service_category) return res.status(400).json({ message: "Service category is required" });
+            if (!cnic)
+                return res.status(400).json({ message: "CNIC is required" });
 
-            const provinces = ["Punjab", "Sindh", "Khyber Pakhtunkhwa", "Balochistan", "Gilgit-Baltistan", "Islamabad"];
+            if (!province || !city)
+                return res.status(400).json({ message: "Province and city are required" });
+
+            if (!service_category)
+                return res.status(400).json({ message: "Service category is required" });
+
+            if (!provider_address || provider_address.trim().length < 5)
+                return res.status(400).json({ message: "Provider address is required and must be at least 5 characters" });
+
+            const provinces = [
+                "Punjab",
+                "Sindh",
+                "Khyber Pakhtunkhwa",
+                "Balochistan",
+                "Gilgit-Baltistan",
+                "Islamabad"
+            ];
+
             const cities = {
-                "Punjab": ["Lahore","Rawalpindi","Faisalabad"],
-                "Sindh": ["Karachi","Hyderabad","Sukkur"],
-                "Khyber Pakhtunkhwa": ["Peshawar","Mardan"],
-                "Balochistan": ["Quetta","Gwadar"],
-                "Gilgit-Baltistan": ["Gilgit","Skardu"],
+                "Punjab": ["Lahore", "Rawalpindi", "Faisalabad"],
+                "Sindh": ["Karachi", "Hyderabad", "Sukkur"],
+                "Khyber Pakhtunkhwa": ["Peshawar", "Mardan"],
+                "Balochistan": ["Quetta", "Gwadar"],
+                "Gilgit-Baltistan": ["Gilgit", "Skardu"],
                 "Islamabad": ["Islamabad"]
             };
 
-            if (!provinces.includes(province)) return res.status(400).json({ message: "Invalid province" });
-            if (!cities[province].includes(city)) return res.status(400).json({ message: "Invalid city for selected province" });
+            if (!provinces.includes(province))
+                return res.status(400).json({ message: "Invalid province" });
 
-            // Certificates
-            if (!req.files?.police_certificate || !req.files?.professional_certificate) {
+            if (!cities[province].includes(city))
+                return res.status(400).json({ message: "Invalid city for selected province" });
+
+            if (!req.files?.police_certificate || !req.files?.professional_certificate)
                 return res.status(400).json({ message: "Provider must upload police and professional certificates" });
-            }
 
             police_certificate = req.files.police_certificate[0].filename;
             professional_certificate = req.files.professional_certificate[0].filename;
-            if (req.file) profile_picture = req.file.filename;
+
+            if (req.file)
+                profile_picture = req.file.filename;
         }
 
-        // -----------------
-        // Check existing user by email or CNIC
-        // -----------------
-        const existingUser = await User.findOne({ 
-            where: isProviderSignup ? { [Op.or]: [{ email }, { cnic }] } : { email } 
+        const existingUser = await User.findOne({
+            where: isProviderSignup
+                ? { [Op.or]: [{ email }, { cnic }] }
+                : { email }
         });
-        if (existingUser) return res.status(400).json({ message: "Email or CNIC already registered" });
 
-        // Hash password
+        if (existingUser)
+            return res.status(400).json({ message: "Email or CNIC already registered" });
+
         const hashedPassword = await bcrypt.hash(password, 10);
 
-        // -----------------
-        // Create User
-        // -----------------
         const newUser = await User.create({
             name: name.trim(),
-            email,
+            email: email.toLowerCase(),
             password: hashedPassword,
             phone,
             role: isProviderSignup ? "provider" : role,
             cnic: isProviderSignup ? cnic : null,
             province: isProviderSignup ? province : null,
             city: isProviderSignup ? city : null,
-            service_category: isProviderSignup ? service_category : null,
+            service_category: isProviderSignup ? service_category.trim() : null,
+            provider_address: isProviderSignup ? provider_address.trim() : null,
             police_certificate,
             professional_certificate,
             profile_picture,
             approval_status: isProviderSignup ? "pending" : "approved",
             submitted_at: isProviderSignup ? new Date() : null
         });
-        // =========================
-// Notify Admin
-// =========================
 
-const admin = await User.findOne({
-    where: {
-        role: "admin"
-    }
-});
+        const admin = await User.findOne({
+            where: {
+                role: "admin"
+            }
+        });
 
-
-if (admin) {
-
-    if (isProviderSignup) {
-
-        await createNotification(
-            admin.user_id,
-            "registration",
-            `New provider registration received from ${newUser.name}. Awaiting approval.`
-        );
-
-    } else {
-
-        await createNotification(
-            admin.user_id,
-            "registration",
-            `New resident ${newUser.name} has registered.`
-        );
-
-    }
-
-}
+        if (admin) {
+            if (isProviderSignup) {
+                await createNotification(
+                    admin.user_id,
+                    "general",
+                    `New provider registration received from ${newUser.name}. Awaiting admin approval.`
+                );
+            } else {
+                await createNotification(
+                    admin.user_id,
+                    "general",
+                    `New resident ${newUser.name} has registered.`
+                );
+            }
+        }
 
         res.status(201).json({
-            message: isProviderSignup 
-                ? "Provider registered successfully. Waiting admin approval." 
+            message: isProviderSignup
+                ? "Provider registered successfully. Waiting admin approval."
                 : "User registered successfully",
             user: {
                 id: newUser.user_id,
@@ -144,10 +143,10 @@ if (admin) {
                 email: newUser.email,
                 role: newUser.role,
                 approval_status: newUser.approval_status,
-                service_category: newUser.service_category
+                service_category: newUser.service_category,
+                provider_address: newUser.provider_address
             }
         });
-
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
@@ -159,19 +158,40 @@ if (admin) {
 export const login = async (req, res) => {
     try {
         const { email, password } = req.body;
-        if (!email || !password) return res.status(400).json({ message: "Email and password required" });
 
-        const user = await User.findOne({ where: { email } });
-        if (!user) return res.status(400).json({ message: "User not found" });
+        if (!email || !password)
+            return res.status(400).json({ message: "Email and password required" });
+
+        const user = await User.findOne({
+            where: {
+                email: email.toLowerCase()
+            }
+        });
+
+        if (!user)
+            return res.status(400).json({ message: "User not found" });
 
         if (user.role === "provider" && user.approval_status !== "approved") {
-            return res.status(403).json({ message: "Provider account is pending admin approval" });
+            return res.status(403).json({
+                message: "Provider account is pending admin approval"
+            });
         }
 
         const isMatch = await bcrypt.compare(password, user.password);
-        if (!isMatch) return res.status(400).json({ message: "Invalid credentials" });
 
-        const token = jwt.sign({ id: user.user_id, role: user.role }, process.env.JWT_SECRET, { expiresIn: "1d" });
+        if (!isMatch)
+            return res.status(400).json({ message: "Invalid credentials" });
+
+        const token = jwt.sign(
+            {
+                id: user.user_id,
+                role: user.role
+            },
+            process.env.JWT_SECRET,
+            {
+                expiresIn: "1d"
+            }
+        );
 
         res.status(200).json({
             message: "Login successful",
@@ -182,10 +202,10 @@ export const login = async (req, res) => {
                 email: user.email,
                 role: user.role,
                 approval_status: user.approval_status,
-                service_category: user.service_category
+                service_category: user.service_category,
+                provider_address: user.provider_address
             }
         });
-
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
@@ -197,24 +217,34 @@ export const login = async (req, res) => {
 export const forgotPassword = async (req, res) => {
     try {
         const { email } = req.body;
-        if (!email) return res.status(400).json({ message: "Email is required" });
 
-        const user = await User.findOne({ where: { email } });
-        if (!user) return res.status(404).json({ message: "User not found" });
+        if (!email)
+            return res.status(400).json({ message: "Email is required" });
 
-        // Generate 4-digit PIN
+        const user = await User.findOne({
+            where: {
+                email: email.toLowerCase()
+            }
+        });
+
+        if (!user)
+            return res.status(404).json({ message: "User not found" });
+
         const pin = Math.floor(1000 + Math.random() * 9000).toString();
 
-        user.reset_password_token = pin; // store PIN instead of token
-        user.reset_password_expires = Date.now() + 3600000; // 1 hour
+        user.reset_password_token = pin;
+        user.reset_password_expires = Date.now() + 3600000;
+
         await user.save();
 
-        // Send PIN via email
         const transporter = nodemailer.createTransport({
             host: process.env.SMTP_HOST,
             port: process.env.SMTP_PORT,
             secure: false,
-            auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS }
+            auth: {
+                user: process.env.SMTP_USER,
+                pass: process.env.SMTP_PASS
+            }
         });
 
         await transporter.sendMail({
@@ -227,76 +257,77 @@ export const forgotPassword = async (req, res) => {
                    <p>Expires in 1 hour.</p>`
         });
 
-        res.status(200).json({ message: "Password reset PIN sent to your email" });
-
+        res.status(200).json({
+            message: "Password reset PIN sent to your email"
+        });
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
 };
 
-// POST /api/auth/verify-pin
+// =========================
+// VERIFY PIN
+// =========================
 export const verifyPin = async (req, res) => {
     try {
         const { email, pin } = req.body;
 
-        if (!email) return res.status(400).json({ message: "Email is required" });
-        if (!pin) return res.status(400).json({ message: "PIN is required" });
+        if (!email)
+            return res.status(400).json({ message: "Email is required" });
+
+        if (!pin)
+            return res.status(400).json({ message: "PIN is required" });
 
         const user = await User.findOne({
             where: {
-                email,
+                email: email.toLowerCase(),
                 reset_password_token: pin,
-                reset_password_expires: { [Op.gt]: Date.now() }
+                reset_password_expires: {
+                    [Op.gt]: Date.now()
+                }
             }
         });
 
-        if (!user) return res.status(400).json({ success: false, message: "Invalid or expired PIN" });
+        if (!user)
+            return res.status(400).json({
+                success: false,
+                message: "Invalid or expired PIN"
+            });
 
-        // Return success without revealing password or token
-        res.status(200).json({ success: true, message: "PIN is valid" });
-
+        res.status(200).json({
+            success: true,
+            message: "PIN is valid"
+        });
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
 };
 
-// POST /api/auth/update-password
+// =========================
+// UPDATE PASSWORD
+// =========================
 export const updatePassword = async (req, res) => {
     try {
         const { email, pin, newPassword, confirmPassword } = req.body;
 
-        if (!email) {
-            return res.status(400).json({
-                message: "Email is required"
-            });
-        }
+        if (!email)
+            return res.status(400).json({ message: "Email is required" });
 
-        if (!pin) {
-            return res.status(400).json({
-                message: "PIN is required"
-            });
-        }
+        if (!pin)
+            return res.status(400).json({ message: "PIN is required" });
 
-        if (!newPassword) {
-            return res.status(400).json({
-                message: "New password is required"
-            });
-        }
+        if (!newPassword)
+            return res.status(400).json({ message: "New password is required" });
 
-        if (!confirmPassword) {
-            return res.status(400).json({
-                message: "Confirm password is required"
-            });
-        }
+        if (!confirmPassword)
+            return res.status(400).json({ message: "Confirm password is required" });
 
-        // Check both passwords match
         if (newPassword !== confirmPassword) {
             return res.status(400).json({
                 message: "New password and confirm password do not match"
             });
         }
 
-        // Validate password strength
         const passwordRegex =
             /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&]).{8,}$/;
 
@@ -308,9 +339,11 @@ export const updatePassword = async (req, res) => {
 
         const user = await User.findOne({
             where: {
-                email,
+                email: email.toLowerCase(),
                 reset_password_token: pin,
-                reset_password_expires: { [Op.gt]: Date.now() }
+                reset_password_expires: {
+                    [Op.gt]: Date.now()
+                }
             }
         });
 
@@ -320,7 +353,6 @@ export const updatePassword = async (req, res) => {
             });
         }
 
-        // Hash new password
         const hashedPassword = await bcrypt.hash(newPassword, 10);
 
         user.password = hashedPassword;
@@ -333,7 +365,6 @@ export const updatePassword = async (req, res) => {
             success: true,
             message: "Password updated successfully"
         });
-
     } catch (error) {
         res.status(500).json({
             error: error.message

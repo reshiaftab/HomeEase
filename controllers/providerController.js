@@ -76,6 +76,51 @@ export const getRecommendedProviders = async (req, res) => {
     }
 };
 
+// =========================
+// Get All Providers
+// =========================
+
+export const getAllProviders = async (req, res) => {
+    try {
+
+        const providers = await User.findAll({
+            where: {
+                role: "provider",
+                approval_status: "approved"
+            },
+            attributes: [
+                "user_id",
+                "name",
+                "email",
+                "phone",
+                "profile_picture",
+                "service_category",
+                "province",
+                "city",
+                "availability_status",
+                "approval_status"
+            ],
+            order: [
+                ["name", "ASC"]
+            ]
+        });
+
+        res.status(200).json({
+            success: true,
+            providers
+        });
+
+    } catch (error) {
+
+        console.error("Get all providers error:", error);
+
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+
+    }
+};
 
 // GET /api/provider/category/:category
 // Get all approved providers by service category

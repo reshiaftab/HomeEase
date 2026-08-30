@@ -94,6 +94,12 @@ const User = sequelize.define("User", {
     },
 
 
+    provider_address: {
+    type: DataTypes.STRING(255),
+    allowNull: true
+    },
+
+
     service_category:{
         type:DataTypes.STRING(50),
         allowNull:true
@@ -121,7 +127,7 @@ const User = sequelize.define("User", {
 
         allowNull:false,
 
-        defaultValue:"approved"
+        defaultValue:"pending"
     },
 
 

@@ -29,6 +29,16 @@ const Booking = sequelize.define("Booking", {
         type: DataTypes.FLOAT,
         allowNull: true
     },
+    service_address: {
+    type: DataTypes.STRING(255),
+    allowNull: false
+    },
+
+    additional_notes: {
+    type: DataTypes.TEXT,
+    allowNull: true,
+    defaultValue: ""
+    },
     booking_date: {
         type: DataTypes.DATEONLY,
         allowNull: false,

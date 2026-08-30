@@ -6,25 +6,32 @@ import { Op } from "sequelize";
 import { createNotification } from "./notificationController.js";
 
 
-// =========================
+// ==================================================
 // Get Admin User
-// =========================
+// ==================================================
 
 const getAdmin = async () => {
 
     return await User.findOne({
-        where:{
-            role:"admin"
+        where: {
+            role: "admin"
         }
     });
 
 };
 
 
-
-// =========================
-// Create Booking with availability check
-// =========================
+// ==================================================
+// Create Booking
+// Includes:
+// - Availability check
+// - Location
+// - Service address
+// - Additional notes
+// - Provider notification
+// - Resident notification
+// - Admin notification
+// ==================================================
 
 export const createBooking = async (req, res) => {
 
@@ -33,32 +40,61 @@ export const createBooking = async (req, res) => {
         const residentId = req.user.id;
 
 
-        const { 
-            service_id, 
-            booking_date, 
-            booking_time, 
-            latitude, 
-            longitude 
+        const {
+            service_id,
+            booking_date,
+            booking_time,
+            latitude,
+            longitude,
+            service_address,
+            additional_notes
         } = req.body;
 
 
+        // ------------------------------------------
+        // Validate required fields
+        // ------------------------------------------
 
         if (
-            !service_id || 
-            !booking_date || 
-            !booking_time || 
-            latitude == null || 
-            longitude == null
+            !service_id ||
+            !booking_date ||
+            !booking_time ||
+            latitude == null ||
+            longitude == null ||
+            !service_address
         ) {
 
             return res.status(400).json({
+
                 message:
-                "service_id, booking_date, booking_time, latitude, and longitude are required"
+                    "service_id, booking_date, booking_time, latitude, longitude, and service_address are required"
+
             });
 
         }
 
 
+        // ------------------------------------------
+        // Validate service address
+        // ------------------------------------------
+
+        if (
+            typeof service_address !== "string" ||
+            service_address.trim().length === 0
+        ) {
+
+            return res.status(400).json({
+
+                message: "Service address cannot be empty"
+
+            });
+
+        }
+
+
+        // ------------------------------------------
+        // Find service
+        // ------------------------------------------
 
         const service = await Service.findByPk(service_id);
 
@@ -66,126 +102,138 @@ export const createBooking = async (req, res) => {
         if (!service) {
 
             return res.status(404).json({
-                message:"Service not found"
+
+                message: "Service not found"
+
             });
 
         }
 
 
+        // ------------------------------------------
+        // Get provider from service
+        // ------------------------------------------
 
         const providerId = service.provider_id;
 
 
+        // ------------------------------------------
+        // Check provider availability
+        // ------------------------------------------
 
         const dayOfWeek =
-        new Date(booking_date)
-        .toLocaleString(
-            'en-US',
-            {
-                weekday:'short'
-            }
-        );
-
-
+            new Date(booking_date)
+                .toLocaleString(
+                    "en-US",
+                    {
+                        weekday: "short"
+                    }
+                );
 
 
         const availableSlot =
-        await ProviderAvailability.findOne({
+            await ProviderAvailability.findOne({
 
-            where:{
+                where: {
 
-                provider_id:providerId,
+                    provider_id: providerId,
 
-                day_of_week:dayOfWeek,
+                    day_of_week: dayOfWeek,
 
-                start_time:{
-                    [Op.lte]:booking_time
-                },
+                    start_time: {
+                        [Op.lte]: booking_time
+                    },
 
-                end_time:{
-                    [Op.gte]:booking_time
+                    end_time: {
+                        [Op.gte]: booking_time
+                    }
+
                 }
 
-            }
-
-        });
+            });
 
 
-
-        if(!availableSlot){
+        if (!availableSlot) {
 
             return res.status(400).json({
 
                 message:
-                "Provider is not available at this time"
+                    "Provider is not available at this time"
 
             });
 
         }
 
 
-
+        // ------------------------------------------
+        // Check if time slot is already booked
+        // ------------------------------------------
 
         const existingBooking =
-        await Booking.findOne({
+            await Booking.findOne({
 
-            where:{
+                where: {
 
-                provider_id:providerId,
+                    provider_id: providerId,
+
+                    booking_date,
+
+                    booking_time
+
+                }
+
+            });
+
+
+        if (existingBooking) {
+
+            return res.status(400).json({
+
+                message:
+                    "This time slot is already booked"
+
+            });
+
+        }
+
+
+        // ------------------------------------------
+        // Create booking
+        // ------------------------------------------
+
+        const newBooking =
+            await Booking.create({
+
+                resident_id: residentId,
+
+                service_id,
+
+                provider_id: providerId,
 
                 booking_date,
 
-                booking_time
+                booking_time,
 
-            }
+                latitude,
 
-        });
+                longitude,
 
+                service_address:
+                    service_address.trim(),
 
+                additional_notes:
+                    additional_notes
+                        ? additional_notes.trim()
+                        : "",
 
-        if(existingBooking){
-
-            return res.status(400).json({
-
-                message:
-                "This time slot is already booked"
+                status: "pending"
 
             });
 
-        }
 
-
-
-
-
-
-        const newBooking =
-        await Booking.create({
-
-            resident_id:residentId,
-
-            service_id,
-
-            provider_id:providerId,
-
-            booking_date,
-
-            booking_time,
-
-            latitude,
-
-            longitude,
-
-            status:"pending"
-
-        });
-
-
-
-
-
-
-        // Provider notification
+        // ------------------------------------------
+        // Notify provider
+        // ------------------------------------------
 
         await createNotification(
 
@@ -198,10 +246,9 @@ export const createBooking = async (req, res) => {
         );
 
 
-
-
-
-        // Resident notification
+        // ------------------------------------------
+        // Notify resident
+        // ------------------------------------------
 
         await createNotification(
 
@@ -214,15 +261,14 @@ export const createBooking = async (req, res) => {
         );
 
 
-
-
-
-        // Admin notification
+        // ------------------------------------------
+        // Notify admin
+        // ------------------------------------------
 
         const admin = await getAdmin();
 
 
-        if(admin){
+        if (admin) {
 
             await createNotification(
 
@@ -237,74 +283,76 @@ export const createBooking = async (req, res) => {
         }
 
 
-
-
-
+        // ------------------------------------------
+        // Get complete booking details
+        // ------------------------------------------
 
         const bookingDetails =
-        await Booking.findByPk(
+            await Booking.findByPk(
 
-            newBooking.booking_id,
+                newBooking.booking_id,
 
-            {
+                {
 
-                include:[
+                    include: [
 
-                    {
-                        model:Service,
+                        {
+                            model: Service,
 
-                        attributes:[
-                            "title",
-                            "description",
-                            "price"
-                        ]
-
-                    },
-
-
-                    {
-
-                        model:User,
-
-                        as:"provider",
-
-                        attributes:[
-                            "name",
-                            "email",
-                            "phone"
-                        ]
-
-                    }
-
-                ]
-
-            }
-
-        );
+                            attributes: [
+                                "title",
+                                "description",
+                                "price"
+                            ]
+                        },
 
 
+                        {
+                            model: User,
+
+                            as: "provider",
+
+                            attributes: [
+                                "name",
+                                "email",
+                                "phone"
+                            ]
+                        }
+
+                    ]
+
+                }
+
+            );
 
 
-
+        // ------------------------------------------
+        // Response
+        // ------------------------------------------
 
         res.status(201).json({
 
             message:
-            "Booking created successfully",
+                "Booking created successfully",
 
             booking:
-            bookingDetails
+                bookingDetails
 
         });
 
 
+    } catch (error) {
 
+        console.error(
+            "Create booking error:",
+            error
+        );
 
-    } catch(error){
 
         res.status(500).json({
 
-            error:error.message
+            error:
+                error.message
 
         });
 
@@ -313,145 +361,174 @@ export const createBooking = async (req, res) => {
 };
 
 
+// ==================================================
+// View My Bookings
+//
+// Resident:
+// Gets bookings created by logged-in resident
+//
+// Provider:
+// Gets bookings assigned to logged-in provider
+// ==================================================
 
+export const getMyBookings = async (req, res) => {
 
+    try {
 
+        const userId = req.user.id;
 
-
-
-
-// =========================
-// View my bookings
-// =========================
-
-export const getMyBookings = async(req,res)=>{
-
-    try{
-
-
-        const userId=req.user.id;
-
-        const role=req.user.role;
-
+        const role = req.user.role;
 
         let bookings;
 
 
+        // ------------------------------------------
+        // Resident bookings
+        // ------------------------------------------
 
-        if(role==="resident"){
-
+        if (role === "resident") {
 
             bookings =
-            await Booking.findAll({
+                await Booking.findAll({
 
-                where:{
-                    resident_id:userId
-                },
+                    where: {
 
-                include:[
-
-                    {
-                        model:Service,
-
-                        attributes:[
-                            "title",
-                            "description",
-                            "price"
-                        ]
+                        resident_id: userId
 
                     },
 
-                    {
+                    include: [
 
-                        model:User,
+                        {
+                            model: Service,
 
-                        as:"provider",
-
-                        attributes:[
-                            "name",
-                            "email",
-                            "phone"
-                        ]
-
-                    }
-
-                ]
-
-            });
+                            attributes: [
+                                "title",
+                                "description",
+                                "price"
+                            ]
+                        },
 
 
+                        {
+                            model: User,
+
+                            as: "provider",
+
+                            attributes: [
+                                "name",
+                                "email",
+                                "phone"
+                            ]
+                        }
+
+                    ],
+
+                    order: [
+                        ["booking_date", "DESC"],
+                        ["booking_time", "DESC"]
+                    ]
+
+                });
 
         }
-        else if(role==="provider"){
 
+
+        // ------------------------------------------
+        // Provider bookings
+        // ------------------------------------------
+
+        else if (role === "provider") {
 
             bookings =
-            await Booking.findAll({
+                await Booking.findAll({
 
-                where:{
-                    provider_id:userId
-                },
+                    where: {
 
-
-                include:[
-
-                    {
-                        model:Service,
-
-                        attributes:[
-                            "title",
-                            "description",
-                            "price"
-                        ]
+                        provider_id: userId
 
                     },
 
-                    {
+                    include: [
 
-                        model:User,
+                        {
+                            model: Service,
 
-                        as:"resident",
-
-                        attributes:[
-                            "name",
-                            "email",
-                            "phone"
-                        ]
-
-                    }
-
-                ]
-
-            });
+                            attributes: [
+                                "title",
+                                "description",
+                                "price"
+                            ]
+                        },
 
 
+                        {
+                            model: User,
+
+                            as: "resident",
+
+                            attributes: [
+                                "name",
+                                "email",
+                                "phone"
+                            ]
+                        }
+
+                    ],
+
+                    order: [
+                        ["booking_date", "DESC"],
+                        ["booking_time", "DESC"]
+                    ]
+
+                });
 
         }
-        else{
 
+
+        // ------------------------------------------
+        // Invalid role
+        // ------------------------------------------
+
+        else {
 
             return res.status(403).json({
 
-                message:"Invalid role"
+                message:
+                    "Invalid role"
 
             });
-
 
         }
 
 
+        // ------------------------------------------
+        // Response
+        // ------------------------------------------
+
+        res.status(200).json({
+
+            success: true,
+
+            bookings
+
+        });
 
 
-        res.status(200).json(bookings);
+    } catch (error) {
 
-
-
-    }catch(error){
+        console.error(
+            "Get bookings error:",
+            error
+        );
 
 
         res.status(500).json({
 
-            error:error.message
+            success: false,
+
+            error:
+                error.message
 
         });
 
@@ -460,24 +537,25 @@ export const getMyBookings = async(req,res)=>{
 };
 
 
+// ==================================================
+// Update Booking Status
+//
+// Provider can:
+// - accept
+// - reject
+// - complete
+// - pending
+//
+// Sends notifications to:
+// - Resident
+// - Admin
+// ==================================================
 
+export const updateBookingStatus = async (req, res) => {
 
+    try {
 
-
-
-
-
-// =========================
-// Update booking status
-// =========================
-
-export const updateBookingStatus = async(req,res)=>{
-
-
-    try{
-
-
-        const providerId=req.user.id;
+        const providerId = req.user.id;
 
 
         const {
@@ -490,10 +568,11 @@ export const updateBookingStatus = async(req,res)=>{
         } = req.body;
 
 
+        // ------------------------------------------
+        // Valid statuses
+        // ------------------------------------------
 
-
-
-        const validStatus=[
+        const validStatus = [
 
             "pending",
 
@@ -506,62 +585,53 @@ export const updateBookingStatus = async(req,res)=>{
         ];
 
 
-
-        if(!validStatus.includes(status)){
-
+        if (!validStatus.includes(status)) {
 
             return res.status(400).json({
 
-                message:"Invalid status value"
+                message:
+                    "Invalid status value"
 
             });
 
         }
 
 
-
-
-
+        // ------------------------------------------
+        // Find booking
+        // ------------------------------------------
 
         const booking =
-        await Booking.findByPk(bookingId);
+            await Booking.findByPk(bookingId);
 
 
-
-
-
-        if(
+        if (
             !booking ||
             booking.provider_id !== providerId
-        ){
+        ) {
 
             return res.status(404).json({
 
                 message:
-                "Booking not found or not authorized"
+                    "Booking not found or not authorized"
 
             });
 
         }
 
 
+        // ------------------------------------------
+        // Update status
+        // ------------------------------------------
 
-
-
-
-
-        booking.status=status;
-
+        booking.status = status;
 
         await booking.save();
 
 
-
-
-
-
-
-        // Resident notification
+        // ------------------------------------------
+        // Notify resident
+        // ------------------------------------------
 
         await createNotification(
 
@@ -574,63 +644,53 @@ export const updateBookingStatus = async(req,res)=>{
         );
 
 
-
-
-
-
-
-        // Admin notification
+        // ------------------------------------------
+        // Find admin
+        // ------------------------------------------
 
         const admin =
-        await getAdmin();
+            await getAdmin();
 
 
+        // ------------------------------------------
+        // Notify admin
+        // ------------------------------------------
 
-
-        if(admin){
-
+        if (admin) {
 
             let message;
 
 
-
-            if(status==="accepted"){
-
+            if (status === "accepted") {
 
                 message =
-                `Booking #${booking.booking_id} has been accepted by provider.`;
+                    `Booking #${booking.booking_id} has been accepted by provider.`;
 
             }
 
 
-            else if(status==="completed"){
-
+            else if (status === "completed") {
 
                 message =
-                `Booking #${booking.booking_id} has been completed.`;
+                    `Booking #${booking.booking_id} has been completed.`;
 
             }
 
 
-            else if(status==="rejected"){
-
+            else if (status === "rejected") {
 
                 message =
-                `Booking #${booking.booking_id} has been rejected by provider.`;
+                    `Booking #${booking.booking_id} has been rejected by provider.`;
 
             }
 
 
-            else{
-
+            else {
 
                 message =
-                `Booking #${booking.booking_id} status changed to ${status}.`;
+                    `Booking #${booking.booking_id} status changed to ${status}.`;
 
             }
-
-
-
 
 
             await createNotification(
@@ -643,34 +703,49 @@ export const updateBookingStatus = async(req,res)=>{
 
             );
 
-
         }
 
 
-
-
-
+        // ------------------------------------------
+        // Response
+        // ------------------------------------------
 
         res.status(200).json({
 
+            success: true,
+
             message:
-            "Booking status updated successfully"
+                "Booking status updated successfully",
+
+            booking: {
+
+                booking_id:
+                    booking.booking_id,
+
+                status:
+                    booking.status
+
+            }
 
         });
 
 
+    } catch (error) {
 
-
-
-    }catch(error){
+        console.error(
+            "Update booking status error:",
+            error
+        );
 
 
         res.status(500).json({
 
-            error:error.message
+            success: false,
+
+            error:
+                error.message
 
         });
-
 
     }
 
