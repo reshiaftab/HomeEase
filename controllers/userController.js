@@ -49,7 +49,7 @@ export const getProfile = async (req, res) => {
             profile.city = user.city;
             profile.service_category = user.service_category;
             profile.provider_address = user.provider_address;
-            profile.price = service ? service.price : null;
+            profile.price = service ? service.price : 0;
         }
 
         res.status(200).json({
@@ -83,7 +83,7 @@ export const updateProfile = async (req, res) => {
             return res.status(400).json({ message: "Phone must be at least 10 digits and numeric" });
         }
 
-        if (provider_address && provider_address.trim().length < 5) {
+        if (user.role === "provider" && provider_address !== undefined && provider_address.trim().length < 5) {
             return res.status(400).json({ message: "Provider address must be at least 5 characters long" });
         }
 
@@ -117,7 +117,15 @@ export const updateProfile = async (req, res) => {
                 }
             });
 
-            if (service && price !== undefined) {
+            if (!service) {
+                service = await Service.create({
+                    provider_id: user.user_id,
+                    title: user.service_category,
+                    description: "",
+                    price: price !== undefined ? Number(price) : 0,
+                    location: user.city || ""
+                });
+            } else if (price !== undefined) {
                 service.price = Number(price);
                 await service.save();
             }
@@ -140,8 +148,10 @@ export const updateProfile = async (req, res) => {
                 price: user.role === "provider" && service ? service.price : undefined
             }
         });
-
     } catch (error) {
-        res.status(500).json({ success: false, error: error.message });
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
     }
 };

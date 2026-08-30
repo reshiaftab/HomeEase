@@ -15,74 +15,127 @@ export const getRecommendedProviders = async (req, res) => {
             });
         }
 
-        const dayOfWeek = new Date(date).toLocaleString('en-US', { weekday: 'short' });
+        const dayOfWeek = new Date(date).toLocaleString("en-US", {
+            weekday: "short"
+        });
 
-        const services = await Service.findAll({
+        const providers = await User.findAll({
             where: {
-                title: { [Op.like]: `%${category}%` },
-                location: { [Op.like]: `%${location}%` }
+                role: "provider",
+                service_category: {
+                    [Op.like]: `%${category}%`
+                },
+                approval_status: "approved",
+                availability_status: "available",
+                [Op.or]: [
+                    {
+                        city: {
+                            [Op.like]: `%${location}%`
+                        }
+                    },
+                    {
+                        provider_address: {
+                            [Op.like]: `%${location}%`
+                        }
+                    }
+                ]
             },
+            attributes: [
+                "user_id",
+                "name",
+                "phone",
+                "email",
+                "profile_picture",
+                "service_category",
+                "province",
+                "city",
+                "provider_address",
+                "availability_status",
+                "approval_status"
+            ],
             include: [
                 {
-                    model: User,
-                    attributes: ["user_id", "name", "role", "availability_status", "approval_status", "profile_picture"],
-                    where: {
-                        role: "provider",
-                        approval_status: "approved",
-                        availability_status: "available"
-                    }
+                    model: Service,
+                    as: "services",
+                    required: false,
+                    attributes: [
+                        "service_id",
+                        "title",
+                        "description",
+                        "price",
+                        "location"
+                    ]
                 },
                 {
                     model: ProviderAvailability,
                     required: true,
                     where: {
                         day_of_week: dayOfWeek,
-                        start_time: { [Op.lte]: time },
-                        end_time: { [Op.gte]: time }
-                    }
+                        start_time: {
+                            [Op.lte]: time
+                        },
+                        end_time: {
+                            [Op.gte]: time
+                        }
+                    },
+                    attributes: []
                 },
                 {
                     model: Review,
+                    as: "providerReviews",
+                    required: false,
                     attributes: []
                 }
             ],
-            attributes: {
-                include: [
-                    [fn("AVG", col("Reviews.rating")), "average_rating"],
-                    [fn("COUNT", col("Reviews.review_id")), "total_reviews"]
-                ]
-            },
-            group: ["Service.service_id"]
+            order: [
+                ["name", "ASC"]
+            ]
         });
 
-        const result = services.map(service => ({
-            provider_id: service.User.user_id,
-            provider_name: service.User.name,
-            provider_picture: service.User.profile_picture,
-            service_id: service.service_id,
-            service_title: service.title,
-            location: service.location,
-            average_rating: parseFloat(service.get("average_rating")) || 0,
-            total_reviews: parseInt(service.get("total_reviews")) || 0
-        }));
+        const result = providers.map(provider => {
+            const services = provider.services || [];
+            const service = services.length > 0 ? services[0] : null;
 
-        result.sort((a, b) => b.average_rating - a.average_rating);
+            return {
+                provider_id: provider.user_id,
+                provider_name: provider.name,
+                provider_email: provider.email,
+                provider_phone: provider.phone,
+                provider_picture: provider.profile_picture,
+                service_category: provider.service_category,
+                service_id: service ? service.service_id : null,
+                service_title: service ? service.title : provider.service_category,
+                service_description: service ? service.description : "",
+                price: service ? service.price : 0,
+                location: provider.city,
+                provider_address: provider.provider_address,
+                province: provider.province,
+                city: provider.city,
+                availability_status: provider.availability_status
+            };
+        });
 
-        res.status(200).json(result);
+        res.status(200).json({
+            success: true,
+            count: result.length,
+            providers: result
+        });
 
     } catch (error) {
-        console.error(error);
-        res.status(500).json({ error: error.message });
+        console.error("Get recommended providers error:", error);
+
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
     }
 };
 
 // =========================
 // Get All Providers
 // =========================
-
 export const getAllProviders = async (req, res) => {
     try {
-
         const providers = await User.findAll({
             where: {
                 role: "provider",
@@ -97,36 +150,72 @@ export const getAllProviders = async (req, res) => {
                 "service_category",
                 "province",
                 "city",
+                "provider_address",
                 "availability_status",
                 "approval_status"
+            ],
+            include: [
+                {
+                    model: Service,
+                    as: "services",
+                    required: false,
+                    attributes: [
+                        "service_id",
+                        "title",
+                        "description",
+                        "price",
+                        "location"
+                    ]
+                }
             ],
             order: [
                 ["name", "ASC"]
             ]
         });
 
+        const result = providers.map(provider => {
+            const service = provider.services && provider.services.length > 0
+                ? provider.services[0]
+                : null;
+
+            return {
+                user_id: provider.user_id,
+                name: provider.name,
+                email: provider.email,
+                phone: provider.phone,
+                profile_picture: provider.profile_picture,
+                service_category: provider.service_category,
+                province: provider.province,
+                city: provider.city,
+                provider_address: provider.provider_address,
+                availability_status: provider.availability_status,
+                approval_status: provider.approval_status,
+                service_id: service ? service.service_id : null,
+                price: service ? service.price : 0
+            };
+        });
+
         res.status(200).json({
             success: true,
-            providers
+            count: result.length,
+            providers: result
         });
 
     } catch (error) {
-
         console.error("Get all providers error:", error);
 
         res.status(500).json({
             success: false,
             error: error.message
         });
-
     }
 };
 
-// GET /api/provider/category/:category
-// Get all approved providers by service category
+// =========================
+// Get Providers By Category
+// =========================
 export const getProvidersByCategory = async (req, res) => {
     try {
-
         const { category } = req.params;
 
         if (!category) {
@@ -138,34 +227,77 @@ export const getProvidersByCategory = async (req, res) => {
         const providers = await User.findAll({
             where: {
                 role: "provider",
-                service_category: category,
+                service_category: {
+                    [Op.like]: category
+                },
                 approval_status: "approved"
             },
             attributes: [
                 "user_id",
                 "name",
+                "email",
                 "phone",
                 "service_category",
                 "province",
                 "city",
+                "provider_address",
                 "profile_picture",
-                "availability_status"
+                "availability_status",
+                "approval_status"
+            ],
+            include: [
+                {
+                    model: Service,
+                    as: "services",
+                    required: false,
+                    attributes: [
+                        "service_id",
+                        "title",
+                        "description",
+                        "price",
+                        "location"
+                    ]
+                }
+            ],
+            order: [
+                ["name", "ASC"]
             ]
+        });
+
+        const result = providers.map(provider => {
+            const service = provider.services && provider.services.length > 0
+                ? provider.services[0]
+                : null;
+
+            return {
+                user_id: provider.user_id,
+                name: provider.name,
+                email: provider.email,
+                phone: provider.phone,
+                service_category: provider.service_category,
+                province: provider.province,
+                city: provider.city,
+                provider_address: provider.provider_address,
+                profile_picture: provider.profile_picture,
+                availability_status: provider.availability_status,
+                approval_status: provider.approval_status,
+                service_id: service ? service.service_id : null,
+                price: service ? service.price : 0
+            };
         });
 
         res.status(200).json({
             success: true,
-            count: providers.length,
-            providers
+            count: result.length,
+            providers: result
         });
 
     } catch (error) {
-
-        console.error(error);
+        console.error("Get providers by category error:", error);
 
         res.status(500).json({
+            success: false,
             error: error.message
         });
-
     }
 };

@@ -4,6 +4,7 @@ import crypto from "crypto";
 import nodemailer from "nodemailer";
 import { Op } from "sequelize";
 import User from "../models/User.js";
+import Service from "../models/Service.js";
 import { createNotification } from "./notificationController.js";
 
 // =========================
@@ -78,14 +79,19 @@ export const register = async (req, res) => {
             police_certificate = req.files.police_certificate[0].filename;
             professional_certificate = req.files.professional_certificate[0].filename;
 
-            if (req.file)
+            if (req.files?.profile_picture?.[0]) {
+                profile_picture = req.files.profile_picture[0].filename;
+            } else if (req.file) {
                 profile_picture = req.file.filename;
+            }
         }
+
+        const normalizedEmail = email.trim().toLowerCase();
 
         const existingUser = await User.findOne({
             where: isProviderSignup
-                ? { [Op.or]: [{ email }, { cnic }] }
-                : { email }
+                ? { [Op.or]: [{ email: normalizedEmail }, { cnic }] }
+                : { email: normalizedEmail }
         });
 
         if (existingUser)
@@ -95,7 +101,7 @@ export const register = async (req, res) => {
 
         const newUser = await User.create({
             name: name.trim(),
-            email: email.toLowerCase(),
+            email: normalizedEmail,
             password: hashedPassword,
             phone,
             role: isProviderSignup ? "provider" : role,
@@ -110,6 +116,16 @@ export const register = async (req, res) => {
             approval_status: isProviderSignup ? "pending" : "approved",
             submitted_at: isProviderSignup ? new Date() : null
         });
+
+        // Automatically create a service for the provider
+        if (isProviderSignup) {
+        await Service.create({
+        provider_id: newUser.user_id,
+        title: service_category.trim(),
+        price: 0,
+        location: city
+        });
+        }
 
         const admin = await User.findOne({
             where: {
@@ -144,10 +160,12 @@ export const register = async (req, res) => {
                 role: newUser.role,
                 approval_status: newUser.approval_status,
                 service_category: newUser.service_category,
-                provider_address: newUser.provider_address
+                provider_address: newUser.provider_address,
+                price: isProviderSignup ? 0 : undefined
             }
         });
     } catch (error) {
+        console.error("Registration error:", error);
         res.status(500).json({ error: error.message });
     }
 };
@@ -164,7 +182,7 @@ export const login = async (req, res) => {
 
         const user = await User.findOne({
             where: {
-                email: email.toLowerCase()
+                email: email.trim().toLowerCase()
             }
         });
 
@@ -193,6 +211,19 @@ export const login = async (req, res) => {
             }
         );
 
+        let price = undefined;
+
+        if (user.role === "provider") {
+            const service = await Service.findOne({
+                where: {
+                    provider_id: user.user_id
+                },
+                attributes: ["price"]
+            });
+
+            price = service ? service.price : null;
+        }
+
         res.status(200).json({
             message: "Login successful",
             token,
@@ -203,7 +234,8 @@ export const login = async (req, res) => {
                 role: user.role,
                 approval_status: user.approval_status,
                 service_category: user.service_category,
-                provider_address: user.provider_address
+                provider_address: user.provider_address,
+                price
             }
         });
     } catch (error) {

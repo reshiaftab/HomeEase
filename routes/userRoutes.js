@@ -12,12 +12,29 @@ router.put(
     "/profile",
     authMiddleware,
     upload.single("profile_picture"),
-    body("name").optional().isLength({ min: 3 }).withMessage("Name must be at least 3 characters"),
-    body("email").optional().isEmail().withMessage("Must be a valid email"),
-    body("phone").optional().isLength({ min: 10 }).withMessage("Phone number too short"),
+    body("name")
+        .optional()
+        .isLength({ min: 3 })
+        .withMessage("Name must be at least 3 characters"),
+    body("email")
+        .optional()
+        .isEmail()
+        .withMessage("Must be a valid email"),
+    body("phone")
+        .optional()
+        .isLength({ min: 10 })
+        .withMessage("Phone number too short"),
+    body("price")
+        .optional()
+        .isFloat({ min: 0 })
+        .withMessage("Price must be a valid number greater than or equal to 0"),
     (req, res, next) => {
         const errors = validationResult(req);
-        if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+        if (!errors.isEmpty()) {
+            return res.status(400).json({
+                errors: errors.array()
+            });
+        }
         next();
     },
     updateProfile
