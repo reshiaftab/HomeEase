@@ -3,6 +3,7 @@ import Service from "../models/Service.js";
 import ProviderAvailability from "../models/ProviderAvailability.js";
 import Review from "../models/Review.js";
 import { Op, fn, col } from "sequelize";
+import { providerSentimentScore } from "../utils/sentiment.js";
 
 // GET /api/providers/recommendations
 export const getRecommendedProviders = async (req, res) => {
@@ -84,17 +85,21 @@ export const getRecommendedProviders = async (req, res) => {
                     model: Review,
                     as: "providerReviews",
                     required: false,
-                    attributes: []
+                    attributes: ["rating", "comment"]
                 }
-            ],
-            order: [
-                ["name", "ASC"]
             ]
         });
 
-        const result = providers.map(provider => {
+        // AI ranking: score each provider from review ratings + comment
+        // sentiment analysis, then sort best-reputation first.
+        const scored = providers.map(provider => {
             const services = provider.services || [];
             const service = services.length > 0 ? services[0] : null;
+            const reviews = provider.providerReviews || [];
+
+            const sentiment = providerSentimentScore(
+                reviews.map(r => ({ rating: r.rating, comment: r.comment }))
+            );
 
             return {
                 provider_id: provider.user_id,
@@ -111,14 +116,30 @@ export const getRecommendedProviders = async (req, res) => {
                 provider_address: provider.provider_address,
                 province: provider.province,
                 city: provider.city,
-                availability_status: provider.availability_status
+                availability_status: provider.availability_status,
+                // AI / sentiment fields consumed by the resident app.
+                rating: sentiment.avgRating,
+                review_count: sentiment.reviewCount,
+                sentiment_score: sentiment.score,
+                positive_percent: sentiment.positivePct
             };
+        });
+
+        // Best sentiment score first; ties broken by more reviews then name.
+        scored.sort((a, b) => {
+            if (b.sentiment_score !== a.sentiment_score) {
+                return b.sentiment_score - a.sentiment_score;
+            }
+            if (b.review_count !== a.review_count) {
+                return b.review_count - a.review_count;
+            }
+            return a.provider_name.localeCompare(b.provider_name);
         });
 
         res.status(200).json({
             success: true,
-            count: result.length,
-            providers: result
+            count: scored.length,
+            providers: scored
         });
 
     } catch (error) {

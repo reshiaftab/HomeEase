@@ -1,6 +1,7 @@
 import Review from "../models/Review.js";
 import Booking from "../models/Booking.js";
 import User from "../models/User.js";
+import { createNotification } from "./notificationController.js";
 
 // Add Review
 export const addReview = async (req, res) => {
@@ -12,7 +13,7 @@ export const addReview = async (req, res) => {
             return res.status(400).json({ message: "booking_id and rating are required" });
         }
 
-        // Find booking and provider
+        // Find the specific booking belonging to this resident
         const booking = await Booking.findOne({
             where: { booking_id, resident_id: residentId }
         });
@@ -21,16 +22,34 @@ export const addReview = async (req, res) => {
             return res.status(404).json({ message: "Booking not found" });
         }
 
+        if (booking.status !== "completed") {
+            return res.status(400).json({
+                message: "You can only review a completed booking"
+            });
+        }
+
         const providerId = booking.provider_id;
 
-        // Create review
+        // Create review (service_id comes from the booking — it is required)
         const newReview = await Review.create({
-            booking_id,
             resident_id: residentId,
             provider_id: providerId,
+            service_id: booking.service_id,
             rating,
             comment
         });
+
+        // Real-time notifications to both parties.
+        await createNotification(
+            providerId,
+            "review",
+            `You received a ${rating}-star review for booking #${booking_id}.`
+        );
+        await createNotification(
+            residentId,
+            "review",
+            `Your review for booking #${booking_id} has been submitted.`
+        );
 
         res.status(201).json({
             message: "Review added successfully",

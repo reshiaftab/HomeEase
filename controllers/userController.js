@@ -34,7 +34,9 @@ export const getProfile = async (req, res) => {
             role: user.role,
             profile_picture: user.profile_picture,
             approval_status: user.approval_status,
-            availability_status: user.availability_status
+            availability_status: user.availability_status,
+            province: user.province,
+            city: user.city
         };
 
         if (user.role === "provider") {
@@ -67,7 +69,7 @@ export const getProfile = async (req, res) => {
 export const updateProfile = async (req, res) => {
     try {
         const userId = req.user.id;
-        const { name, phone, provider_address, price } = req.body;
+        const { name, phone, provider_address, price, city } = req.body;
 
         const user = await User.findByPk(userId);
 
@@ -97,6 +99,11 @@ export const updateProfile = async (req, res) => {
 
         user.name = name ? name.trim() : user.name;
         user.phone = phone || user.phone;
+        // All users (residents included) may set/update their city, used for
+        // provider filtering and nearby search.
+        if (city !== undefined && city !== null) {
+            user.city = String(city).trim();
+        }
 
         if (user.role === "provider" && provider_address !== undefined) {
             user.provider_address = provider_address.trim();

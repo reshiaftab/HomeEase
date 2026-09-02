@@ -44,8 +44,12 @@ const Booking = sequelize.define("Booking", {
         allowNull: false,
         validate: {
             isValid(value) {
-                const today = new Date().toISOString().split('T')[0];
-                if (value < today) {
+                // LOCAL date (not UTC toISOString) so Pakistan (UTC+5) dates
+                // aren't compared against a date that is still "yesterday" in
+                // Greenwich.
+                const n = new Date();
+                const today = `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, "0")}-${String(n.getDate()).padStart(2, "0")}`;
+                if (String(value) < today) {
                     throw new Error("booking_date cannot be in the past");
                 }
             }
@@ -56,8 +60,27 @@ const Booking = sequelize.define("Booking", {
         allowNull: false
     },
     status: {
-        type: DataTypes.ENUM("pending", "accepted", "completed", "rejected"),
+        type: DataTypes.ENUM("pending", "accepted", "completed", "rejected", "cancelled"),
         defaultValue: "pending"
+    },
+    // ---- Hourly-billing / job-timer fields ----
+    // When the provider pressed "Start Timer" (an accepted job is in progress).
+    started_at: {
+        type: DataTypes.DATE,
+        allowNull: true,
+        defaultValue: null
+    },
+    // Total tracked work time in seconds (set when the job is completed).
+    work_duration_seconds: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        defaultValue: null
+    },
+    // Final billed amount = rounded hours * provider's hourly rate.
+    final_amount: {
+        type: DataTypes.FLOAT,
+        allowNull: true,
+        defaultValue: null
     }
 }, {
     tableName: "bookings",

@@ -18,14 +18,14 @@ const validate = (validations) => async (req, res, next) => {
 // -------------------
 const provinces = ["Punjab", "Sindh", "Khyber Pakhtunkhwa", "Balochistan", "Gilgit-Baltistan", "Islamabad"];
 const cities = {
-    "Punjab": ["Lahore", "Rawalpindi", "Faisalabad"],
-    "Sindh": ["Karachi", "Hyderabad", "Sukkur"],
-    "Khyber Pakhtunkhwa": ["Peshawar", "Mardan"],
-    "Balochistan": ["Quetta", "Gwadar"],
-    "Gilgit-Baltistan": ["Gilgit", "Skardu"],
+    "Punjab": ["Lahore","Faisalabad","Rawalpindi","Multan","Gujranwala","Sialkot","Gujrat","Bahawalpur","Sargodha","Sahiwal","Jhang","Sheikhupura","Rahim Yar Khan","Kasur","Mianwali","Attock","Jhelum","Okara","Dera Ghazi Khan","Chiniot","Toba Tek Singh","Hafizabad","Mandi Bahauddin","Nankana Sahib","Pakpattan","Vehari","Lodhran","Khanewal","Muzaffargarh","Layyah","Bhakkar","Khushab","Narowal","Murree","Taxila","Wah Cantonment"],
+    "Sindh": ["Karachi","Hyderabad","Sukkur","Larkana","Nawabshah","Mirpur Khas","Jacobabad","Shikarpur","Dadu","Khairpur","Thatta","Badin","Tando Allahyar","Tando Muhammad Khan","Ghotki","Kashmore","Sanghar","Umerkot","Tharparkar","Jamshoro","Kotri","Matiari","Qambar Shahdadkot"],
+    "Khyber Pakhtunkhwa": ["Peshawar","Mardan","Abbottabad","Mingora","Swat","Nowshera","Kohat","Dera Ismail Khan","Mansehra","Haripur","Charsadda","Swabi","Bannu","Chitral","Timergara","Dir","Tank","Hangu","Karak","Batkhela","Parachinar"],
+    "Balochistan": ["Quetta","Gwadar","Turbat","Khuzdar","Chaman","Zhob","Sibi","Dera Murad Jamali","Nasirabad","Lasbela","Hub","Uthal","Mastung","Pishin","Killa Saifullah","Loralai","Barkhan","Musakhel","Panjgur","Kech","Pasni","Ormara","Sohbatpur","Jaffarabad","Kalāt"],
+    "Gilgit-Baltistan": ["Gilgit","Skardu","Hunza","Chilas","Ghizer","Ghanche","Khaplu","Astore","Diamer","Kharmang","Shigar","Nagar","Yasin"],
     "Islamabad": ["Islamabad"]
 };
-const serviceCategories = ["Electrician", "Plumber", "Painter", "Cleaner", "Carpenter"];
+const serviceCategories = ["Electrician", "Plumber", "Cleaner", "Carpenter"];
 
 // =========================
 // Registration
