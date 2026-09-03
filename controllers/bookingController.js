@@ -162,16 +162,20 @@ export const createBooking = async (req, res) => {
             status: "pending"
         });
 
+        const residentUser = await User.findByPk(residentId, { attributes: ["name"] });
+        const residentName = residentUser?.name || "A resident";
+        const providerName = provider.name || "your provider";
+
         await createNotification(
             provider.user_id,
             "booking",
-            `New booking request for ${booking_date} at ${booking_time}`
+            `New booking request from ${residentName} for ${booking_date} at ${booking_time}`
         );
 
         await createNotification(
             residentId,
             "booking",
-            `Your booking request for ${booking_date} at ${booking_time} has been sent to the provider.`
+            `Your booking request with ${providerName} for ${booking_date} at ${booking_time} has been sent.`
         );
 
         const admin = await getAdmin();
@@ -180,7 +184,7 @@ export const createBooking = async (req, res) => {
             await createNotification(
                 admin.user_id,
                 "booking",
-                `New booking request created for ${booking_date} at ${booking_time}.`
+                `New booking request from ${residentName} to ${providerName} for ${booking_date} at ${booking_time}.`
             );
         }
 
@@ -391,11 +395,33 @@ export const updateBookingStatus = async (req, res) => {
         booking.status = status;
         await booking.save();
 
-        await createNotification(
-            booking.resident_id,
-            "booking",
-            `Your booking status has been updated to "${status}" by the provider.`
-        );
+        // Resolve names so notifications address people, not booking numbers.
+        const [residentUser, providerUser] = await Promise.all([
+            User.findByPk(booking.resident_id, { attributes: ["name"] }),
+            User.findByPk(booking.provider_id, { attributes: ["name"] })
+        ]);
+        const residentName = residentUser?.name || "the resident";
+        const providerName = providerUser?.name || "the provider";
+
+        if (status === "accepted") {
+            await createNotification(
+                booking.resident_id,
+                "booking",
+                `${providerName} accepted your booking. They will start the job at the scheduled time.`
+            );
+        } else if (status === "rejected") {
+            await createNotification(
+                booking.resident_id,
+                "booking",
+                `${providerName} was unable to accept your booking.`
+            );
+        } else {
+            await createNotification(
+                booking.resident_id,
+                "booking",
+                `Your booking status has been updated to "${status}" by ${providerName}.`
+            );
+        }
 
         const admin = await getAdmin();
 
@@ -403,13 +429,13 @@ export const updateBookingStatus = async (req, res) => {
             let message;
 
             if (status === "accepted") {
-                message = `Booking #${booking.booking_id} has been accepted by provider.`;
+                message = `${providerName} accepted a booking from ${residentName}.`;
             } else if (status === "completed") {
-                message = `Booking #${booking.booking_id} has been completed.`;
+                message = `${providerName}'s booking with ${residentName} has been completed.`;
             } else if (status === "rejected") {
-                message = `Booking #${booking.booking_id} has been rejected by provider.`;
+                message = `${providerName} rejected a booking from ${residentName}.`;
             } else {
-                message = `Booking #${booking.booking_id} status changed to ${status}.`;
+                message = `Booking between ${providerName} and ${residentName} status changed to ${status}.`;
             }
 
             await createNotification(
@@ -459,6 +485,18 @@ export const startJob = async (req, res) => {
         if (!booking.started_at) {
             booking.started_at = new Date();
             await booking.save();
+
+            // Notify the resident the service has started (real-time socket).
+            const [residentUser, providerUser] = await Promise.all([
+                User.findByPk(booking.resident_id, { attributes: ["name"] }),
+                User.findByPk(booking.provider_id, { attributes: ["name"] })
+            ]);
+            const providerName = providerUser?.name || "your provider";
+            await createNotification(
+                booking.resident_id,
+                "booking",
+                `${providerName} has started the job. The service is now in progress.`
+            );
         }
 
         res.status(200).json({
@@ -513,27 +551,40 @@ export const completeJob = async (req, res) => {
         const service = await Service.findOne({ where: { provider_id: providerId } });
         const rate = service && !isNaN(Number(service.price)) ? Number(service.price) : 0;
 
-        // Bill in whole hours: any partial hour counts as a full hour
-        // (e.g. 1h10m -> 2 hours). Minimum 1 hour once work has started.
-        const billableHours = Math.max(1, Math.ceil(seconds / 3600));
-        const finalAmount = Math.round(billableHours * rate);
+        // Bill by the ACTUAL time worked, priced per minute from the hourly
+        // rate (rate/60 per minute). Any partial minute counts as a full
+        // minute; minimum 1 minute once work has started.
+        //   e.g. hourly rate 900 -> 15/min; 30 min of work -> 450.
+        const billableMinutes = Math.max(1, Math.ceil(seconds / 60));
+        const finalAmount = Math.round(billableMinutes * (rate / 60));
 
-        booking.status = "completed";
+        // Provider marks the job finished -> it now AWAITS the resident's
+        // confirmation before it becomes fully "completed".
+        booking.status = "awaiting_confirmation";
         booking.work_duration_seconds = seconds;
         booking.final_amount = finalAmount;
         await booking.save();
 
+        // Resolve names so notifications address people, not booking numbers.
+        const [residentUser, providerUser] = await Promise.all([
+            User.findByPk(booking.resident_id, { attributes: ["name"] }),
+            User.findByPk(booking.provider_id, { attributes: ["name"] })
+        ]);
+        const residentName = residentUser?.name || "the resident";
+        const providerName = providerUser?.name || "your provider";
+
+        // Ask the resident to confirm the job is done (references the provider).
         await createNotification(
             booking.resident_id,
             "booking",
-            `Your job has been completed. Work time: ${formatDuration(seconds)} · Total: PKR ${finalAmount}.`
+            `${providerName} finished the job. Work time: ${formatDuration(seconds)} · Total: PKR ${finalAmount}. Please confirm the job is complete.`
         );
 
-        // Notify the provider too (the one who marked it complete).
+        // Notify the provider that they're waiting for confirmation (references the resident).
         await createNotification(
             booking.provider_id,
             "booking",
-            `You completed booking #${booking.booking_id}. Work time: ${formatDuration(seconds)} · Billed PKR ${finalAmount}.`
+            `The job for ${residentName} is finished. Waiting for them to confirm. Billed PKR ${finalAmount} (${formatDuration(seconds)}).`
         );
 
         const admin = await getAdmin();
@@ -541,24 +592,158 @@ export const completeJob = async (req, res) => {
             await createNotification(
                 admin.user_id,
                 "booking",
-                `Booking #${booking.booking_id} completed. Billed PKR ${finalAmount} (${formatDuration(seconds)}).`
+                `${providerName} finished a job for ${residentName}, awaiting confirmation. Billed PKR ${finalAmount}.`
             );
         }
 
         res.status(200).json({
             success: true,
-            message: "Job completed",
+            message: "Job finished — waiting for resident confirmation",
             booking: {
                 booking_id: booking.booking_id,
                 status: booking.status,
                 started_at: booking.started_at,
                 work_duration_seconds: booking.work_duration_seconds,
                 final_amount: booking.final_amount,
-                billable_hours: billableHours
+                billable_minutes: billableMinutes
             }
         });
     } catch (error) {
         console.error("Complete job error:", error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+};
+
+// ==================================================
+// Resident confirms the job is done (resident only)
+// Moves an "awaiting_confirmation" booking to "completed".
+// ==================================================
+export const confirmCompletion = async (req, res) => {
+    try {
+        const residentId = req.user.id;
+        const { bookingId } = req.params;
+
+        const booking = await Booking.findByPk(bookingId);
+        if (!booking || booking.resident_id !== residentId) {
+            return res.status(404).json({ success: false, message: "Booking not found or not authorized" });
+        }
+
+        if (booking.status !== "awaiting_confirmation") {
+            return res.status(400).json({
+                success: false,
+                message: `A ${booking.status} booking cannot be paid for yet.`
+            });
+        }
+
+        // Mock payment: the resident pays the billed amount. Paying completes
+        // the job and records the earning for the provider.
+        const amount = booking.final_amount != null ? Number(booking.final_amount) : 0;
+
+        booking.paid = true;
+        booking.paid_at = new Date();
+        booking.status = "completed";
+        await booking.save();
+
+        // Resolve names so notifications address people, not booking numbers.
+        const [residentUser, providerUser] = await Promise.all([
+            User.findByPk(booking.resident_id, { attributes: ["name"] }),
+            User.findByPk(booking.provider_id, { attributes: ["name"] })
+        ]);
+        const residentName = residentUser?.name || "the resident";
+        const providerName = providerUser?.name || "your provider";
+
+        await createNotification(
+            booking.provider_id,
+            "payment",
+            `Payment received from ${residentName}: PKR ${amount}. It has been added to your earnings.`
+        );
+        await createNotification(
+            booking.resident_id,
+            "payment",
+            `Payment of PKR ${amount} to ${providerName} was successful. You can now leave a review.`
+        );
+
+        const admin = await getAdmin();
+        if (admin) {
+            await createNotification(
+                admin.user_id,
+                "payment",
+                `${residentName} paid ${providerName} PKR ${amount} for a completed job.`
+            );
+        }
+
+        res.status(200).json({
+            success: true,
+            message: "Payment successful",
+            booking: {
+                booking_id: booking.booking_id,
+                status: booking.status,
+                paid: booking.paid,
+                final_amount: booking.final_amount,
+                work_duration_seconds: booking.work_duration_seconds
+            }
+        });
+    } catch (error) {
+        console.error("Payment error:", error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+};
+
+// ==================================================
+// Provider earnings breakdown (provider only)
+// Returns total earnings + the list of paid bookings that make it up.
+// ==================================================
+export const getEarnings = async (req, res) => {
+    try {
+        const providerId = req.user.id;
+
+        const paidBookings = await Booking.findAll({
+            where: {
+                provider_id: providerId,
+                paid: true,
+                status: "completed"
+            },
+            include: [
+                {
+                    model: User,
+                    as: "resident",
+                    attributes: ["user_id", "name"]
+                },
+                {
+                    model: Service,
+                    attributes: ["service_id", "title"]
+                }
+            ],
+            order: [["paid_at", "DESC"]]
+        });
+
+        let total = 0;
+        const details = paidBookings.map((b) => {
+            const amount = Number(b.final_amount) || 0;
+            total += amount;
+            const seconds = b.work_duration_seconds || 0;
+            const h = Math.floor(seconds / 3600);
+            const m = Math.floor((seconds % 3600) / 60);
+            const duration = h > 0 ? `${h}h ${m}m` : `${m}m`;
+            return {
+                booking_id: b.booking_id,
+                resident_name: b.resident?.name || "Customer",
+                service: b.Service?.title || "Service",
+                amount,
+                duration,
+                work_duration_seconds: seconds,
+                paid_at: b.paid_at
+            };
+        });
+
+        res.status(200).json({
+            success: true,
+            total_earnings: Math.round(total),
+            job_count: details.length,
+            earnings: details
+        });
+    } catch (error) {
+        console.error("Get earnings error:", error);
         res.status(500).json({ success: false, error: error.message });
     }
 };
@@ -594,21 +779,38 @@ export const cancelBooking = async (req, res) => {
             });
         }
 
+        // Once the provider has started the job (timer running), the resident
+        // can no longer cancel.
+        if (booking.status === "accepted" && booking.started_at) {
+            return res.status(400).json({
+                success: false,
+                message: "This job has already started and cannot be cancelled."
+            });
+        }
+
         booking.status = "cancelled";
         await booking.save();
+
+        // Resolve names so notifications address people, not booking numbers.
+        const [residentUser, providerUser] = await Promise.all([
+            User.findByPk(booking.resident_id, { attributes: ["name"] }),
+            User.findByPk(booking.provider_id, { attributes: ["name"] })
+        ]);
+        const residentName = residentUser?.name || "the resident";
+        const providerName = providerUser?.name || "the provider";
 
         // Confirm to the resident who cancelled.
         await createNotification(
             booking.resident_id,
             "booking",
-            `Your booking #${booking.booking_id} has been cancelled.`
+            `Your booking with ${providerName} has been cancelled.`
         );
 
-        // Notify the provider that the resident cancelled.
+        // Notify the provider that the resident cancelled (references the resident).
         await createNotification(
             booking.provider_id,
             "booking",
-            `Booking #${booking.booking_id} has been cancelled by the resident.`
+            `${residentName} cancelled the booking.`
         );
 
         const admin = await getAdmin();
@@ -616,7 +818,7 @@ export const cancelBooking = async (req, res) => {
             await createNotification(
                 admin.user_id,
                 "booking",
-                `Booking #${booking.booking_id} was cancelled by the resident.`
+                `${residentName} cancelled a booking with ${providerName}.`
             );
         }
 

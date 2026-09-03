@@ -30,6 +30,15 @@ export const addReview = async (req, res) => {
 
         const providerId = booking.provider_id;
 
+        // Names so notifications say who the review is about / from (no
+        // booking numbers).
+        const [reviewer, providerUser] = await Promise.all([
+            User.findByPk(residentId, { attributes: ["name"] }),
+            User.findByPk(providerId, { attributes: ["name"] })
+        ]);
+        const reviewerName = reviewer?.name || "A resident";
+        const providerName = providerUser?.name || "your provider";
+
         // Create review (service_id comes from the booking — it is required)
         const newReview = await Review.create({
             resident_id: residentId,
@@ -43,12 +52,12 @@ export const addReview = async (req, res) => {
         await createNotification(
             providerId,
             "review",
-            `You received a ${rating}-star review for booking #${booking_id}.`
+            `You received a ${rating}-star review from ${reviewerName}.`
         );
         await createNotification(
             residentId,
             "review",
-            `Your review for booking #${booking_id} has been submitted.`
+            `Your review for ${providerName} has been submitted.`
         );
 
         res.status(201).json({

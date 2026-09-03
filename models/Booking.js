@@ -60,7 +60,9 @@ const Booking = sequelize.define("Booking", {
         allowNull: false
     },
     status: {
-        type: DataTypes.ENUM("pending", "accepted", "completed", "rejected", "cancelled"),
+        // awaiting_confirmation: provider finished the job and is waiting for
+        // the resident to confirm before the booking is fully "completed".
+        type: DataTypes.ENUM("pending", "accepted", "awaiting_confirmation", "completed", "rejected", "cancelled"),
         defaultValue: "pending"
     },
     // ---- Hourly-billing / job-timer fields ----
@@ -79,6 +81,18 @@ const Booking = sequelize.define("Booking", {
     // Final billed amount = rounded hours * provider's hourly rate.
     final_amount: {
         type: DataTypes.FLOAT,
+        allowNull: true,
+        defaultValue: null
+    },
+    // Mock payment: set true once the resident pays (which also completes the
+    // booking). paid_at records when the payment was made.
+    paid: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: false
+    },
+    paid_at: {
+        type: DataTypes.DATE,
         allowNull: true,
         defaultValue: null
     }
