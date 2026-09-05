@@ -1,6 +1,6 @@
 import ChatMessage from "../models/ChatMessage.js";
 import { Op } from "sequelize";
-import { getIo } from "../socket.js";
+import { getIo, emitToUsers, bookingRoom } from "../socket.js";
 
 // Chat messages are retained for 30 days after they are sent, then deleted.
 const MESSAGE_RETENTION_DAYS = 30;
@@ -48,9 +48,12 @@ export const sendMessage = async (req, res) => {
             message
         });
 
-        // Emit message using your socket instance
+        // Emit message: to the open-chat booking room AND to both users'
+        // personal rooms so a recipient sitting on their conversation LIST
+        // (not inside this chat) still receives it live.
         const io = getIo();
-        io.to(`booking_${booking_id}`).emit("receiveMessage", newMessage);
+        io.to(bookingRoom(booking_id)).emit("receiveMessage", newMessage);
+        emitToUsers([senderId, receiver_id], "receiveMessage", newMessage);
 
         res.status(201).json({ message: "Message sent successfully", chat: newMessage });
     } catch (error) {

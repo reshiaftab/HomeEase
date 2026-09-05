@@ -1,6 +1,6 @@
 import Notification from "../models/Notification.js";
 
-import { getIo } from "../socket.js";
+import { getIo, emitToUsers } from "../socket.js";
 
 
 
@@ -30,19 +30,19 @@ export const createNotification = async (
 
 
 
-        // Real-time notification
-
+        // Real-time notification. Emit both globally (legacy) and to the
+        // user's personal room so every one of that user's connected clients
+        // receives it reliably.
         try{
 
-
             const io = getIo();
-
 
             io.emit(
                 `notification-${user_id}`,
                 notification
             );
 
+            emitToUsers(user_id, `notification-${user_id}`, notification);
 
         }catch(socketError){
 

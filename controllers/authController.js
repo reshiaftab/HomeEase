@@ -149,10 +149,25 @@ export const register = async (req, res) => {
             }
         }
 
+        // Issue a session token right away. A pending provider is allowed a
+        // limited session (they are blocked from the app by the approval
+        // screen) so they can poll their approval status without a 401.
+        const token = jwt.sign(
+            {
+                id: newUser.user_id,
+                role: newUser.role
+            },
+            process.env.JWT_SECRET,
+            {
+                expiresIn: "1d"
+            }
+        );
+
         res.status(201).json({
             message: isProviderSignup
                 ? "Provider registered successfully. Waiting admin approval."
                 : "User registered successfully",
+            token,
             user: {
                 id: newUser.user_id,
                 name: newUser.name,
@@ -189,9 +204,12 @@ export const login = async (req, res) => {
         if (!user)
             return res.status(400).json({ message: "User not found" });
 
-        if (user.role === "provider" && user.approval_status !== "approved") {
+        // Rejected providers are blocked entirely. Pending providers ARE
+        // allowed to log in (they receive a token) so the app can keep them
+        // on the "waiting for admin approval" screen until approved.
+        if (user.role === "provider" && user.approval_status === "rejected") {
             return res.status(403).json({
-                message: "Provider account is pending admin approval"
+                message: "Your provider account was rejected. Please contact support."
             });
         }
 

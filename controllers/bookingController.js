@@ -4,6 +4,7 @@ import Service from "../models/Service.js";
 import User from "../models/User.js";
 import { Op } from "sequelize";
 import { createNotification } from "./notificationController.js";
+import { emitBookingUpdate } from "../socket.js";
 
 // ==================================================
 // Get Admin User
@@ -187,6 +188,16 @@ export const createBooking = async (req, res) => {
                 `New booking request from ${residentName} to ${providerName} for ${booking_date} at ${booking_time}.`
             );
         }
+
+        // Real-time: tell the provider's app a new incoming request arrived
+        // and let the resident refresh their own list.
+        emitBookingUpdate({
+            bookingId: newBooking.booking_id,
+            status: "pending",
+            action: "new_booking",
+            providerId: newBooking.provider_id,
+            residentId: newBooking.resident_id
+        });
 
         const bookingDetails = await Booking.findByPk(
             newBooking.booking_id,
@@ -445,6 +456,16 @@ export const updateBookingStatus = async (req, res) => {
             );
         }
 
+        // Real-time: move the booking between phases on both apps instantly.
+        emitBookingUpdate({
+            bookingId: booking.booking_id,
+            status: booking.status,
+            action: status === "accepted" ? "accepted" : status,
+            providerId: booking.provider_id,
+            residentId: booking.resident_id,
+            extra: { started_at: booking.started_at || null }
+        });
+
         res.status(200).json({
             success: true,
             message: "Booking status updated successfully",
@@ -497,6 +518,16 @@ export const startJob = async (req, res) => {
                 "booking",
                 `${providerName} has started the job. The service is now in progress.`
             );
+
+            // Real-time: flip both apps to "In Progress".
+            emitBookingUpdate({
+                bookingId: booking.booking_id,
+                status: booking.status,
+                action: "started",
+                providerId: booking.provider_id,
+                residentId: booking.resident_id,
+                extra: { started_at: booking.started_at }
+            });
         }
 
         res.status(200).json({
@@ -596,6 +627,20 @@ export const completeJob = async (req, res) => {
             );
         }
 
+        // Real-time: move the job to "awaiting payment/confirmation" both sides.
+        emitBookingUpdate({
+            bookingId: booking.booking_id,
+            status: booking.status,
+            action: "completed_pending_confirmation",
+            providerId: booking.provider_id,
+            residentId: booking.resident_id,
+            extra: {
+                started_at: booking.started_at,
+                final_amount: booking.final_amount,
+                work_duration_seconds: booking.work_duration_seconds
+            }
+        });
+
         res.status(200).json({
             success: true,
             message: "Job finished — waiting for resident confirmation",
@@ -671,6 +716,17 @@ export const confirmCompletion = async (req, res) => {
                 `${residentName} paid ${providerName} PKR ${amount} for a completed job.`
             );
         }
+
+        // Real-time: mark the job completed/paid on the provider's app so the
+        // earnings and Completed tab update instantly.
+        emitBookingUpdate({
+            bookingId: booking.booking_id,
+            status: booking.status,
+            action: "payment_completed",
+            providerId: booking.provider_id,
+            residentId: booking.resident_id,
+            extra: { paid: true, final_amount: booking.final_amount }
+        });
 
         res.status(200).json({
             success: true,
@@ -821,6 +877,15 @@ export const cancelBooking = async (req, res) => {
                 `${residentName} cancelled a booking with ${providerName}.`
             );
         }
+
+        // Real-time: remove the cancelled booking from the provider's lists.
+        emitBookingUpdate({
+            bookingId: booking.booking_id,
+            status: booking.status,
+            action: "cancelled",
+            providerId: booking.provider_id,
+            residentId: booking.resident_id
+        });
 
         res.status(200).json({
             success: true,
